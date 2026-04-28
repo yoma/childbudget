@@ -1,5 +1,5 @@
 const cfg = window.__SUPABASE_CONFIG__ ?? {};
-const supabase = window.supabase?.createClient?.(cfg.url, cfg.anonKey, {
+const supabaseClient = window.supabase?.createClient?.(cfg.url, cfg.anonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
 const ADMIN_BUILD_VERSION = "2026-04-28-1623";
@@ -46,7 +46,7 @@ async function init() {
   window.__superAdminBooted = true;
   renderAdminBuildMeta("warn", "cloud check...");
   bindEvents();
-  if (!supabase) {
+  if (!supabaseClient) {
     renderAdminBuildMeta("offline", "cloud offline");
     setStatus(
       adminAuthStatusEl,
@@ -55,7 +55,7 @@ async function init() {
     );
     return;
   }
-  const { data, error } = await supabase.auth.getSession();
+  const { data, error } = await supabaseClient.auth.getSession();
   renderAdminBuildMeta(error ? "offline" : "online", error ? "cloud offline" : "cloud online");
   setWorkspaceVisible(Boolean(data.session));
   if (data.session) {
@@ -87,7 +87,7 @@ async function handleAdminLogin() {
   setStatus(adminAuthStatusEl, "Inloggen...", true);
   const email = adminEmailInput.value.trim();
   const password = adminPasswordInput.value;
-  if (!supabase) {
+  if (!supabaseClient) {
     setStatus(
       adminAuthStatusEl,
       "Inloggen niet mogelijk: Supabase client ontbreekt. Herlaad pagina of check configuratie.",
@@ -101,7 +101,7 @@ async function handleAdminLogin() {
   }
 
   try {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) {
       const lowered = String(error.message || "").toLowerCase();
       if (lowered.includes("email not confirmed")) {
@@ -126,7 +126,7 @@ async function handleAdminLogin() {
 }
 
 async function handleAdminLogout() {
-  await supabase.auth.signOut();
+  await supabaseClient.auth.signOut();
   setWorkspaceVisible(false);
   setStatus(adminAuthStatusEl, "Uitgelogd.", true);
 }
@@ -138,13 +138,13 @@ async function handleCreateFamilyWithChild(event) {
   const childSlug = childSlugInput.value.trim().toLowerCase();
   setStatus(createFamilyStatusEl, "Family aanmaken...", true);
 
-  const userId = (await supabase.auth.getUser()).data.user?.id;
+  const userId = (await supabaseClient.auth.getUser()).data.user?.id;
   if (!userId) {
     setStatus(createFamilyStatusEl, "Geen actieve admin sessie.", false);
     return;
   }
 
-  const { data: familyData, error: familyError } = await supabase
+  const { data: familyData, error: familyError } = await supabaseClient
     .from("families")
     .insert({ name: familyName })
     .select("id")
@@ -156,7 +156,7 @@ async function handleCreateFamilyWithChild(event) {
   }
 
   const familyId = familyData.id;
-  const { error: seedProfileError } = await supabase.from("profiles").insert({
+  const { error: seedProfileError } = await supabaseClient.from("profiles").insert({
     id: userId,
     family_id: familyId,
     role: "admin",
@@ -168,7 +168,7 @@ async function handleCreateFamilyWithChild(event) {
     return;
   }
 
-  const { data: childData, error: childError } = await supabase
+  const { data: childData, error: childError } = await supabaseClient
     .from("children")
     .insert({
       family_id: familyId,
@@ -192,7 +192,7 @@ async function handleCreateFamilyWithChild(event) {
 async function handleCreateChild(event) {
   event.preventDefault();
   setStatus(createChildStatusEl, "Kind toevoegen...", true);
-  const { error } = await supabase.from("children").insert({
+  const { error } = await supabaseClient.from("children").insert({
     family_id: existingFamilyIdInput.value.trim(),
     slug: newChildSlugInput.value.trim().toLowerCase(),
     display_name: newChildNameInput.value.trim(),
@@ -214,7 +214,7 @@ async function handleCreateUserWithProfile(event) {
   const role = newUserRoleInput.value;
   const displayName = newUserDisplayNameInput.value.trim();
 
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
+  const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({ email, password });
   if (signUpError) {
     setStatus(createUserStatusEl, `Auth user aanmaken mislukt: ${signUpError.message}`, false);
     return;
@@ -226,13 +226,13 @@ async function handleCreateUserWithProfile(event) {
   }
 
   if (adminAuthState.email && adminAuthState.password) {
-    await supabase.auth.signInWithPassword({
+    await supabaseClient.auth.signInWithPassword({
       email: adminAuthState.email,
       password: adminAuthState.password,
     });
   }
 
-  const { error: profileError } = await supabase.from("profiles").insert({
+  const { error: profileError } = await supabaseClient.from("profiles").insert({
     id: newUserId,
     family_id: familyId,
     role,
@@ -248,7 +248,7 @@ async function handleCreateUserWithProfile(event) {
 }
 
 async function refreshOverview() {
-  const { data: families, error: familyError } = await supabase
+  const { data: families, error: familyError } = await supabaseClient
     .from("families")
     .select("id,name,children(id,display_name,slug),profiles(id,role,display_name)");
 

@@ -1629,20 +1629,19 @@ label > span {
 
   .admin-quick-nav {
     top: 0.15rem;
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    gap: 0.3rem;
-    padding: 0.38rem 0.4rem;
-    scrollbar-width: thin;
+    display: grid;
+    grid-template-columns: 1fr;
+    overflow: visible;
+    gap: 0.34rem;
+    padding: 0.42rem;
   }
 
   .admin-nav-btn {
-    flex: 0 0 auto;
-    white-space: nowrap;
-    font-size: 0.7rem;
-    padding: 0.28rem 0.58rem;
+    width: 100%;
+    white-space: normal;
+    font-size: 0.74rem;
+    padding: 0.38rem 0.62rem;
+    text-align: center;
   }
 
   .parent-transaction-filters {

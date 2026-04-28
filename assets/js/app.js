@@ -68,8 +68,6 @@ const parentPanel = document.getElementById("parentPanel");
 const closeParentPanelBtn = document.getElementById("closeParentPanelBtn");
 const logoutParentBtn = document.getElementById("logoutParentBtn");
 const resetAllDataBtn = document.getElementById("resetAllDataBtn");
-const jumpParentDashboardBtn = document.getElementById("jumpParentDashboardBtn");
-const parentDashboardSectionEl = document.getElementById("parentDashboardSection");
 const adminQuickNavEl = document.getElementById("adminQuickNav");
 const loggedInAsEl = document.getElementById("loggedInAs");
 const cloudSyncStatusEl = document.getElementById("cloudSyncStatus");
@@ -118,7 +116,6 @@ const toggleDetailsBtn = document.getElementById("toggleDetailsBtn");
 const extraInsightsEl = document.getElementById("extraInsights");
 const viewMode = new URLSearchParams(window.location.search).get("view");
 const mobileParentActionButtons = [
-  jumpParentDashboardBtn,
   resetAllDataBtn,
   closeParentPanelBtn,
 ].filter(Boolean);
@@ -161,9 +158,6 @@ function init() {
     parentDialog.close();
   });
   closeParentPanelBtn.addEventListener("click", () => setParentPanelOpen(false));
-  jumpParentDashboardBtn.addEventListener("click", () => {
-    parentDashboardSectionEl?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
   adminQuickNavEl?.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
