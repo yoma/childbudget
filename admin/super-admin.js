@@ -41,11 +41,15 @@ const adminAuthState = {
 init();
 
 async function init() {
+  bindEvents();
   if (!supabase) {
-    setStatus(adminAuthStatusEl, "Supabase config ontbreekt.", false);
+    setStatus(
+      adminAuthStatusEl,
+      "Login niet mogelijk: Supabase client niet geladen (check script-paden/config).",
+      false
+    );
     return;
   }
-  bindEvents();
   const { data } = await supabase.auth.getSession();
   setWorkspaceVisible(Boolean(data.session));
   if (data.session) {
@@ -54,7 +58,10 @@ async function init() {
 }
 
 function bindEvents() {
-  adminLoginForm.addEventListener("submit", handleAdminLogin);
+  adminLoginForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    handleAdminLogin();
+  });
   adminLogoutBtn.addEventListener("click", handleAdminLogout);
   createFamilyForm.addEventListener("submit", handleCreateFamilyWithChild);
   createChildForm.addEventListener("submit", handleCreateChild);
@@ -62,11 +69,18 @@ function bindEvents() {
   refreshOverviewBtn.addEventListener("click", refreshOverview);
 }
 
-async function handleAdminLogin(event) {
-  event.preventDefault();
+async function handleAdminLogin() {
   setStatus(adminAuthStatusEl, "Inloggen...", true);
   const email = adminEmailInput.value.trim();
   const password = adminPasswordInput.value;
+  if (!supabase) {
+    setStatus(
+      adminAuthStatusEl,
+      "Inloggen niet mogelijk: Supabase client ontbreekt. Herlaad pagina of check configuratie.",
+      false
+    );
+    return;
+  }
   if (!email || !password) {
     setStatus(adminAuthStatusEl, "Vul email en wachtwoord in.", false);
     return;
