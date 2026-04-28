@@ -2,7 +2,7 @@
 <html lang="nl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#faf7ff" />
     <title id="appTitle">Lena Money</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -44,6 +44,12 @@
         <p class="balance-label">Beschikbaar totaal nu</p>
         <h2 id="totalRemaining" class="balance-amount">€ 0,00</h2>
         <div id="topAvailabilityBreakdown" class="top-availability-breakdown"></div>
+        <div id="speedRings" class="speed-rings"></div>
+        <div class="speed-legend">
+          <span><i class="dot dot-green"></i>Rustig tempo</span>
+          <span><i class="dot dot-orange"></i>On track</span>
+          <span><i class="dot dot-red"></i>Snel tempo</span>
+        </div>
         <p id="monthLabel" class="balance-month"></p>
         <div class="balance-chart">
           <canvas id="budgetChart"></canvas>
@@ -54,12 +60,6 @@
             <span class="tag">Mama + Papa</span>
           </div>
           <div id="clearOverview" class="overview-list compact"></div>
-          <div id="speedRings" class="speed-rings"></div>
-          <div class="speed-legend">
-            <span><i class="dot dot-green"></i>Rustig tempo</span>
-            <span><i class="dot dot-orange"></i>On track</span>
-            <span><i class="dot dot-red"></i>Snel tempo</span>
-          </div>
         </div>
       </article>
 

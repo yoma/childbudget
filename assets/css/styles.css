@@ -445,6 +445,7 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.6rem;
+  margin-top: 0.7rem;
   margin-bottom: 0.65rem;
 }
 
@@ -1494,8 +1495,8 @@ body.parent-mode-active .parent-panel {
 }
 
 .admin-quick-nav {
-  position: sticky;
-  top: 0.45rem;
+  position: static;
+  top: auto;
   z-index: 6;
   display: flex;
   gap: 0.4rem;
@@ -1597,6 +1598,12 @@ body.parent-mode-active .parent-panel {
 }
 
 @media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
   .parent-panel {
     margin-top: 1.2rem;
     padding: 0.9rem 0 1.6rem;
@@ -1660,7 +1667,7 @@ body.parent-mode-active .parent-panel {
   }
 
   .admin-quick-nav {
-    top: 0.15rem;
+    top: auto;
     display: grid;
     grid-template-columns: 1fr;
     overflow: visible;
@@ -1688,7 +1695,7 @@ body.parent-mode-active .parent-panel {
   .parent-panel input,
   .parent-panel select,
   .parent-panel textarea {
-    font-size: 0.95rem;
+    font-size: 16px;
     padding: 0.72rem 0.82rem;
   }
 
@@ -1772,14 +1779,15 @@ body.parent-mode-active .parent-panel {
 
 @media (max-width: 640px) {
   .tx-form-actions {
-    position: sticky;
-    bottom: 0.35rem;
-    z-index: 5;
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid var(--card-border);
-    border-radius: 14px;
-    padding: 0.55rem;
-    box-shadow: 0 10px 26px rgba(70, 47, 99, 0.18);
+    position: static;
+    bottom: auto;
+    z-index: auto;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    margin-top: 0.3rem;
   }
 
   .tx-form-actions .btn {
