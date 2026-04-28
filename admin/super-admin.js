@@ -67,17 +67,34 @@ async function handleAdminLogin(event) {
   setStatus(adminAuthStatusEl, "Inloggen...", true);
   const email = adminEmailInput.value.trim();
   const password = adminPasswordInput.value;
-
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    setStatus(adminAuthStatusEl, `Inloggen mislukt: ${error.message}`, false);
+  if (!email || !password) {
+    setStatus(adminAuthStatusEl, "Vul email en wachtwoord in.", false);
     return;
   }
-  adminAuthState.email = email;
-  adminAuthState.password = password;
-  setStatus(adminAuthStatusEl, "Ingelogd als super admin.", true);
-  setWorkspaceVisible(true);
-  await refreshOverview();
+
+  try {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      const lowered = String(error.message || "").toLowerCase();
+      if (lowered.includes("email not confirmed")) {
+        setStatus(
+          adminAuthStatusEl,
+          "Inloggen mislukt: email nog niet bevestigd. Zet user op confirmed in Supabase Auth.",
+          false
+        );
+        return;
+      }
+      setStatus(adminAuthStatusEl, `Inloggen mislukt: ${error.message}`, false);
+      return;
+    }
+    adminAuthState.email = email;
+    adminAuthState.password = password;
+    setStatus(adminAuthStatusEl, "Ingelogd als super admin.", true);
+    setWorkspaceVisible(true);
+    await refreshOverview();
+  } catch (error) {
+    setStatus(adminAuthStatusEl, `Onverwachte fout: ${error?.message ?? "onbekend"}`, false);
+  }
 }
 
 async function handleAdminLogout() {
@@ -244,6 +261,7 @@ function setWorkspaceVisible(isVisible) {
 
 function setStatus(el, message, isSuccess) {
   el.textContent = message;
+  el.classList.remove("muted");
   el.classList.toggle("positive", Boolean(message) && isSuccess);
   el.classList.toggle("error", Boolean(message) && !isSuccess);
 }
