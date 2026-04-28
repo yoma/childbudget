@@ -71,6 +71,7 @@ body {
   align-items: center;
   gap: 1rem;
   padding: 1.6rem 0 1.2rem;
+  position: relative;
 }
 
 .hero-text .eyebrow {
@@ -718,19 +719,16 @@ body {
   width: fit-content;
 }
 
-.hero-text {
-  position: relative;
-}
-
 .app-build-pill {
   position: absolute;
-  top: -0.12rem;
-  right: -0.2rem;
+  top: 0.18rem;
+  right: 0;
   margin-top: 0;
   padding: 0.16rem 0.44rem;
   font-size: 0.62rem;
   font-weight: 600;
-  opacity: 0.84;
+  opacity: 0.78;
+  z-index: 2;
 }
 
 .build-status-dot {
@@ -1590,11 +1588,12 @@ label > span {
   }
 
   .app-build-pill {
-    top: -0.05rem;
-    right: -0.04rem;
+    top: 0.08rem;
+    right: 0;
     padding: 0.12rem 0.34rem;
     font-size: 0.58rem;
-    opacity: 0.72;
+    opacity: 0.68;
+    max-width: 62%;
   }
 
   .panel-header {

@@ -55,11 +55,16 @@ async function init() {
     );
     return;
   }
-  const { data, error } = await supabaseClient.auth.getSession();
-  renderAdminBuildMeta(error ? "offline" : "online", error ? "cloud offline" : "cloud online");
-  setWorkspaceVisible(Boolean(data.session));
-  if (data.session) {
-    await refreshOverview();
+  try {
+    const { data, error } = await supabaseClient.auth.getSession();
+    renderAdminBuildMeta(error ? "offline" : "online", error ? "cloud offline" : "cloud online");
+    setWorkspaceVisible(Boolean(data.session));
+    if (data.session) {
+      await refreshOverview();
+    }
+  } catch (error) {
+    renderAdminBuildMeta("offline", "cloud offline");
+    setStatus(adminAuthStatusEl, networkErrorMessage(error), false);
   }
 }
 
@@ -118,10 +123,12 @@ async function handleAdminLogin() {
     adminAuthState.email = email;
     adminAuthState.password = password;
     setStatus(adminAuthStatusEl, "Ingelogd als super admin.", true);
+    renderAdminBuildMeta("online", "cloud online");
     setWorkspaceVisible(true);
     await refreshOverview();
   } catch (error) {
-    setStatus(adminAuthStatusEl, `Onverwachte fout: ${error?.message ?? "onbekend"}`, false);
+    renderAdminBuildMeta("offline", "cloud offline");
+    setStatus(adminAuthStatusEl, networkErrorMessage(error), false);
   }
 }
 
@@ -300,4 +307,16 @@ function escapeHtml(text) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function networkErrorMessage(error) {
+  const raw = String(error?.message ?? "").toLowerCase();
+  const isFetchIssue = raw.includes("failed to fetch") || raw.includes("networkerror") || raw.includes("fetch");
+  if (!isFetchIssue) {
+    return `Onverwachte fout: ${error?.message ?? "onbekend"}`;
+  }
+  const onlineHint = navigator.onLine
+    ? "Je internet werkt, dus dit lijkt een blokkade naar Supabase (adblock, browser-extensie, firewall of bedrijfsnetwerk)."
+    : "Je lijkt offline. Controleer je internetverbinding.";
+  return `Inloggen mislukt: geen verbinding met Supabase (Failed to fetch). ${onlineHint}`;
 }
