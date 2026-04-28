@@ -6,6 +6,7 @@
     <title>Child Budget · Super Admin</title>
     <link rel="stylesheet" href="../assets/css/styles.css" />
     <script>
+      window.__superAdminScriptLoaded = false;
       window.__adminScriptLoadError = function (label) {
         const buildEl = document.getElementById("adminBuildMeta");
         const statusEl = document.getElementById("adminAuthStatus");
@@ -27,11 +28,11 @@
         if (!(target instanceof HTMLFormElement) || target.id !== "adminLoginForm") {
           return;
         }
-        if (window.__superAdminBooted) {
+        if (window.__superAdminScriptLoaded) {
           return;
         }
         event.preventDefault();
-        window.__adminScriptLoadError("super-admin init");
+        window.__adminScriptLoadError("super-admin.js niet geladen");
       });
     </script>
   </head>
@@ -147,6 +148,6 @@
       </section>
     </main>
 
-    <script defer src="./super-admin.js" onerror="window.__adminScriptLoadError('super-admin.js')"></script>
+    <script defer src="./super-admin.js" onload="window.__superAdminScriptLoaded = true" onerror="window.__adminScriptLoadError('super-admin.js')"></script>
   </body>
 </html>
