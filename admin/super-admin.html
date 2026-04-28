@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lena Money · Super Admin</title>
+    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../assets/js/supabase-config.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <div class="hero-text">
+          <p class="eyebrow">Lena Money</p>
+          <h1>Super Admin</h1>
+          <p class="hero-sub">Families, kinderen en users beheren.</p>
+        </div>
+      </header>
+
+      <section class="card" id="adminAuthCard">
+        <h3>Inloggen als admin</h3>
+        <form id="adminLoginForm" class="form-grid">
+          <label>
+            <span>Email</span>
+            <input id="adminEmailInput" type="email" placeholder="admin@family.local" required />
+          </label>
+          <label>
+            <span>Wachtwoord</span>
+            <input id="adminPasswordInput" type="password" placeholder="••••••••" required />
+          </label>
+          <p id="adminAuthStatus" class="muted wide"></p>
+          <button class="btn btn-primary" type="submit">Inloggen</button>
+          <button id="adminLogoutBtn" class="btn btn-ghost hidden" type="button">Uitloggen</button>
+        </form>
+      </section>
+
+      <section id="adminWorkspace" class="grid hidden">
+        <article class="card">
+          <h3>Nieuwe family + eerste kind</h3>
+          <form id="createFamilyForm" class="form-grid">
+            <label>
+              <span>Family naam</span>
+              <input id="familyNameInput" type="text" placeholder="Family Budget Apps" required />
+            </label>
+            <label>
+              <span>Kind naam</span>
+              <input id="childNameInput" type="text" placeholder="Lena" required />
+            </label>
+            <label class="wide">
+              <span>Kind slug</span>
+              <input id="childSlugInput" type="text" placeholder="lena" required />
+            </label>
+            <p id="createFamilyStatus" class="muted wide"></p>
+            <button class="btn btn-primary" type="submit">Family aanmaken</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <h3>Bestaande family · kind toevoegen</h3>
+          <form id="createChildForm" class="form-grid">
+            <label class="wide">
+              <span>Family ID</span>
+              <input id="existingFamilyIdInput" type="text" placeholder="uuid..." required />
+            </label>
+            <label>
+              <span>Kind naam</span>
+              <input id="newChildNameInput" type="text" placeholder="Emma" required />
+            </label>
+            <label>
+              <span>Kind slug</span>
+              <input id="newChildSlugInput" type="text" placeholder="emma" required />
+            </label>
+            <p id="createChildStatus" class="muted wide"></p>
+            <button class="btn btn-primary" type="submit">Kind toevoegen</button>
+          </form>
+        </article>
+
+        <article class="card wide">
+          <h3>User aanmaken + rol koppelen</h3>
+          <form id="createUserForm" class="form-grid">
+            <label class="wide">
+              <span>Family ID</span>
+              <input id="profileFamilyIdInput" type="text" placeholder="uuid..." required />
+            </label>
+            <label>
+              <span>Email</span>
+              <input id="newUserEmailInput" type="email" placeholder="mama@family.local" required />
+            </label>
+            <label>
+              <span>Wachtwoord</span>
+              <input id="newUserPasswordInput" type="password" placeholder="••••••••" required />
+            </label>
+            <label>
+              <span>Rol</span>
+              <select id="newUserRoleInput">
+                <option value="mama">mama</option>
+                <option value="papa">papa</option>
+                <option value="lena">lena</option>
+                <option value="admin">admin</option>
+              </select>
+            </label>
+            <label>
+              <span>Display naam</span>
+              <input id="newUserDisplayNameInput" type="text" placeholder="Mama" required />
+            </label>
+            <p id="createUserStatus" class="muted wide"></p>
+            <button class="btn btn-primary" type="submit">User + profile aanmaken</button>
+          </form>
+        </article>
+
+        <article class="card wide">
+          <div class="card-header compact">
+            <h3>Families overzicht</h3>
+            <button id="refreshOverviewBtn" type="button" class="btn btn-ghost">Vernieuwen</button>
+          </div>
+          <div id="superAdminOverview" class="overview-list"></div>
+        </article>
+      </section>
+    </main>
+
+    <script src="./super-admin.js"></script>
+  </body>
+</html>

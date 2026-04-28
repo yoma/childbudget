@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#faf7ff" />
+    <title id="appTitle">Lena Money</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./assets/css/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body>
+    <div class="bg-glow"></div>
+
+    <main id="lenaView" class="container">
+      <header class="hero">
+        <div class="hero-text">
+          <p id="heroEyebrow" class="eyebrow">Lena Money</p>
+          <h1 id="heroGreeting">Hey Lena <span class="wave">✨</span></h1>
+          <p class="hero-sub">Jouw budget in 1 oogopslag.</p>
+        </div>
+        <button id="parentModeBtn" class="btn-icon" aria-label="Ouder-modus" title="Ouder-modus">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        </button>
+      </header>
+
+      <section id="coachAlerts" class="coach-alerts"></section>
+
+      <article class="balance-card">
+        <p class="balance-label">Beschikbaar totaal nu</p>
+        <h2 id="totalRemaining" class="balance-amount">€ 0,00</h2>
+        <div id="topAvailabilityBreakdown" class="top-availability-breakdown"></div>
+        <p id="monthLabel" class="balance-month"></p>
+        <div class="balance-chart">
+          <canvas id="budgetChart"></canvas>
+        </div>
+        <div class="balance-inline-overview">
+          <div class="card-header compact">
+            <h3>Deze maand</h3>
+            <span class="tag">Mama + Papa</span>
+          </div>
+          <div id="clearOverview" class="overview-list compact"></div>
+          <div id="speedRings" class="speed-rings"></div>
+          <div class="speed-legend">
+            <span><i class="dot dot-green"></i>Rustig tempo</span>
+            <span><i class="dot dot-orange"></i>On track</span>
+            <span><i class="dot dot-red"></i>Snel tempo</span>
+          </div>
+        </div>
+      </article>
+
+      <div class="details-toggle-wrap">
+        <button id="toggleDetailsBtn" class="btn btn-ghost" type="button">Toon extra details</button>
+      </div>
+
+      <section id="extraInsights" class="grid hidden">
+        <article class="card">
+          <div class="card-header">
+            <h3>Over van vorige maand(en)</h3>
+          </div>
+          <div id="rolloverBreakdown" class="rollover-list"></div>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <h3>Recente transacties</h3>
+          </div>
+          <div id="transactionList"></div>
+        </article>
+      </section>
+    </main>
+
+    <dialog id="parentDialog">
+      <form method="dialog" class="dialog-card" id="pinForm">
+        <h3>Ouder-modus</h3>
+        <p class="muted">Kies ouder en geef de juiste PIN in.</p>
+        <label>
+          <span>Ik ben</span>
+          <select id="loginParent" required>
+            <option value="mama">Mama</option>
+            <option value="papa">Papa</option>
+          </select>
+        </label>
+        <input id="pinInput" type="password" placeholder="••••" required inputmode="numeric" autocomplete="off" />
+        <p id="pinError" class="error" role="alert"></p>
+        <div class="dialog-actions">
+          <button id="cancelPinBtn" class="btn btn-ghost" type="button">Annuleer</button>
+          <button class="btn btn-primary" value="default" type="submit">Open</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="budgetSourceDialog">
+      <form method="dialog" class="dialog-card budget-source-card" id="budgetSourceForm">
+        <h3>Budgetbron kiezen</h3>
+        <p id="budgetSourceMessage" class="muted"></p>
+        <div id="budgetSourceOptions" class="budget-source-options"></div>
+        <div class="dialog-actions">
+          <button id="cancelBudgetSourceBtn" class="btn btn-ghost" type="button">Niet opslaan</button>
+          <button id="useRecommendedBudgetSourceBtn" class="btn btn-ghost" type="button">Aanbevolen</button>
+          <button id="useSelectedBudgetSourceBtn" class="btn btn-primary" type="button">Gekozen bron gebruiken</button>
+        </div>
+      </form>
+    </dialog>
+
+    <section id="parentPanel" class="parent-panel hidden">
+      <div class="container">
+        <header class="panel-header">
+          <div>
+            <h2>Ouder-beheer</h2>
+            <p id="loggedInAs" class="muted"></p>
+            <p id="cloudSyncStatus" class="muted"></p>
+          </div>
+          <div class="panel-actions">
+            <button id="jumpParentDashboardBtn" class="btn btn-ghost" type="button">Dashboard overzicht</button>
+            <button id="resetAllDataBtn" class="btn btn-ghost hidden" type="button">Alles wissen (test)</button>
+            <button id="logoutParentBtn" class="btn btn-ghost" type="button">Uitloggen</button>
+            <button id="closeParentPanelBtn" class="btn btn-ghost" type="button">Sluiten</button>
+          </div>
+        </header>
+
+        <nav id="adminQuickNav" class="admin-quick-nav" aria-label="Snelmenu ouderbeheer">
+          <button type="button" class="admin-nav-btn" data-target="adminTxSection">Transactie</button>
+          <button type="button" class="admin-nav-btn" data-target="parentDashboardSection">Dashboard</button>
+          <button type="button" class="admin-nav-btn" data-target="adminBudgetSection">Maandbudget</button>
+          <button type="button" class="admin-nav-btn" data-target="adminPinSection">PIN</button>
+          <button type="button" class="admin-nav-btn" data-target="adminCoachSection">Coach</button>
+          <button type="button" class="admin-nav-btn" data-target="adminTransactionsSection">Transactielijst</button>
+        </nav>
+
+        <div class="grid">
+          <article id="adminTxSection" class="card wide priority-card">
+            <h3>Transactie toevoegen</h3>
+            <p class="muted">Standaard is dit een uitgave. Bijstorting staat apart als uitzondering.</p>
+            <form id="transactionForm" class="form-grid">
+              <label>
+                <span>Datum</span>
+                <input type="date" id="txDate" required />
+              </label>
+              <label>
+                <span>Categorie</span>
+                <select id="txCategory">
+                  <option value="zakgeld">Zakgeld</option>
+                  <option value="kleding">Kledingsbudget</option>
+                </select>
+              </label>
+              <select id="txType" class="hidden" aria-hidden="true" tabindex="-1">
+                <option value="expense">Uitgave (-)</option>
+                <option value="topup">Bijstorting (+)</option>
+              </select>
+              <p id="txModeLabel" class="tx-mode-label wide">Standaard: uitgave</p>
+              <div class="tx-presets wide" aria-label="Snelle categorie presets">
+                <button type="button" class="tx-preset-btn" data-preset="kleding-expense">👗 Kleding uitgave</button>
+                <button type="button" class="tx-preset-btn" data-preset="zakgeld-expense">💜 Zakgeld uitgave</button>
+              </div>
+              <label>
+                <span>Bedrag (€) (zonder -)</span>
+                <input type="number" step="0.01" min="0.01" id="txAmount" placeholder="bv. 25,00" required />
+                <small id="txAmountModeHint" class="tx-amount-mode-hint hidden">Actieve modus: bijstorting (+) — dit bedrag wordt toegevoegd.</small>
+              </label>
+              <div class="tx-quick-amounts wide" aria-label="Snelle bedragen">
+                <button type="button" class="tx-quick-btn" data-quick-amount="-10">-€10</button>
+                <button type="button" class="tx-quick-btn" data-quick-amount="-20">-€20</button>
+                <button type="button" class="tx-quick-btn" data-quick-amount="-50">-€50</button>
+              </div>
+              <details id="txTopupDetails" class="tx-topup-details wide">
+                <summary>Bijstorting toevoegen (uitzondering)</summary>
+                <p class="tx-topup-help">Kies snel bedrag of vul zelf een bedrag in.</p>
+                <div class="tx-topup-actions">
+                  <button type="button" class="tx-topup-btn" data-topup-amount="10">+€10</button>
+                  <button type="button" class="tx-topup-btn" data-topup-amount="20">+€20</button>
+                  <button type="button" class="tx-topup-btn" data-topup-amount="50">+€50</button>
+                  <button type="button" class="tx-topup-btn manual" data-topup-manual="true">Handmatig bedrag</button>
+                </div>
+              </details>
+              <label class="wide">
+                <span>Notitie</span>
+                <input id="txNote" type="text" placeholder="Bv. sneakers" />
+              </label>
+              <div class="tx-form-actions wide">
+                <button id="txSubmitBtn" class="btn btn-primary" type="submit">Transactie opslaan</button>
+                <button id="cancelTxEditBtn" class="btn btn-ghost hidden" type="button">Annuleer wijziging</button>
+              </div>
+            </form>
+          </article>
+
+          <section id="parentDashboardSection" class="card parent-mini-dashboard-card wide">
+            <div class="card-header compact">
+              <h3>Overzicht mama & papa (deze maand)</h3>
+            </div>
+            <div id="parentMiniDashboard" class="parent-mini-dashboard"></div>
+          </section>
+
+          <article id="adminBudgetSection" class="card">
+            <h3>Maandbudget instellen</h3>
+            <p class="muted">Wordt automatisch opgeslagen onder de aangemelde ouder.</p>
+            <form id="budgetForm" class="form-grid">
+              <label>
+                <span>Maand</span>
+                <input type="month" id="budgetMonth" required />
+              </label>
+              <label>
+                <span>Categorie</span>
+                <select id="budgetCategory">
+                  <option value="zakgeld">Zakgeld</option>
+                  <option value="kleding">Kledingsbudget</option>
+                </select>
+              </label>
+              <label>
+                <span>Bedrag (€)</span>
+                <input type="number" step="0.01" id="budgetAmount" placeholder="0,00" required />
+              </label>
+              <label class="wide checkbox-row">
+                <input type="checkbox" id="budgetAutoRenew" />
+                <span>Maandelijks automatisch verlengen</span>
+              </label>
+              <button class="btn btn-primary" type="submit">Opslaan</button>
+            </form>
+            <div class="auto-renew-box">
+              <p id="autoRenewCountdown" class="muted"></p>
+              <div id="autoRenewOverview" class="auto-renew-overview"></div>
+            </div>
+          </article>
+
+          <article id="adminPinSection" class="card">
+            <h3>PIN wijzigen</h3>
+            <p class="muted">Wijzig alleen de PIN van de ouder die nu aangemeld is.</p>
+            <form id="changePinForm" class="form-grid">
+              <label>
+                <span>Huidige PIN</span>
+                <input id="currentPinInput" type="password" placeholder="••••" required inputmode="numeric" autocomplete="off" />
+              </label>
+              <label>
+                <span>Nieuwe PIN</span>
+                <input id="newPinInput" type="password" placeholder="••••" required inputmode="numeric" autocomplete="off" />
+              </label>
+              <label class="wide">
+                <span>Bevestig nieuwe PIN</span>
+                <input id="confirmPinInput" type="password" placeholder="••••" required inputmode="numeric" autocomplete="off" />
+              </label>
+              <p id="changePinMessage" class="muted wide"></p>
+              <button class="btn btn-primary" type="submit">PIN opslaan</button>
+            </form>
+          </article>
+
+          <article id="adminCoachSection" class="card">
+            <h3>Lena Coach instellingen</h3>
+            <p class="muted">Automatische coach + gevoeligheid zijn gedeeld (1 instelling voor mama en papa).</p>
+            <div class="coach-settings-top">
+              <label class="switch-row">
+                <span>Automatische coach aan (gedeeld)</span>
+                <input id="autoCoachEnabled" type="checkbox" checked />
+              </label>
+              <label>
+                <span>Coach gevoeligheid (gedeeld)</span>
+                <select id="coachSensitivity">
+                  <option value="calm">Rustig</option>
+                  <option value="normal">Normaal</option>
+                  <option value="strict">Streng</option>
+                </select>
+              </label>
+            </div>
+            <div id="parentCoachSummary" class="parent-coach-summary"></div>
+            <form id="parentMessageForm" class="form-grid">
+              <label class="wide">
+                <span id="parentMessageLabel">Jouw boodschap voor Lena</span>
+                <textarea
+                  id="parentMessageInput"
+                  rows="3"
+                  placeholder="Bv. Top bezig! Probeer nog wat over te houden voor het einde van de maand 💜"
+                ></textarea>
+              </label>
+              <label>
+                <span>Activeren voor (dagen)</span>
+                <input id="parentMessageDays" type="number" min="1" max="31" value="3" />
+              </label>
+              <p id="parentMessageStatus" class="muted wide"></p>
+              <button class="btn btn-primary" type="submit">Doorsturen</button>
+            </form>
+          </article>
+        </div>
+
+        <details id="adminTransactionsSection" class="card parent-transactions-accordion">
+          <summary>Alle transacties bekijken (mama + papa)</summary>
+          <div class="parent-transaction-filters">
+            <label>
+              <span>Ouder</span>
+              <select id="parentTxFilterParent">
+                <option value="all">Allebei</option>
+                <option value="mama">Mama</option>
+                <option value="papa">Papa</option>
+              </select>
+            </label>
+            <label>
+              <span>Categorie</span>
+              <select id="parentTxFilterCategory">
+                <option value="all">Alles</option>
+                <option value="zakgeld">Zakgeld</option>
+                <option value="kleding">Kledingsbudget</option>
+              </select>
+            </label>
+          </div>
+          <div id="parentTransactionList" class="parent-transaction-list"></div>
+        </details>
+      </div>
+    </section>
+
+    <script src="./assets/js/supabase-config.js"></script>
+    <script src="./assets/js/app.js"></script>
+  </body>
+</html>
