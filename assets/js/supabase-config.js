@@ -1,5 +1,5 @@
 window.__SUPABASE_CONFIG__ = {
-  appName: "lena_budget",
+  appName: "Child Budget",
   childName: "Lena",
   url: "https://ukwftzmdtgszrvrygroj.supabase.co",
   anonKey: "sb_publishable_XW5DOXR3gOG5Bd0pNa0PHw_ZoKoxGrc",
