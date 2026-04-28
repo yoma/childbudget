@@ -1,5 +1,3 @@
-const STORAGE_KEY = "lena-money-v1";
-
 const defaultState = {
   pins: { mama: "1111", papa: "2222" },
   monthlyBudgets: {},
@@ -30,10 +28,18 @@ const currency = new Intl.NumberFormat("nl-BE", {
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 const APP_BUILD_VERSION = "2026-04-28-1623";
+const urlParams = new URLSearchParams(window.location.search);
 const appConfig = window.__SUPABASE_CONFIG__ ?? {};
-const CHILD_NAME = (appConfig.childName || "Lena").trim();
-const defaultAppName = `${CHILD_NAME.toLowerCase()}_budget`;
-const APP_NAME = (appConfig.appName || defaultAppName).trim();
+const ACTIVE_FAMILY_ID = (urlParams.get("family") || appConfig.familyId || "default-family").trim();
+const ACTIVE_CHILD_ID = (urlParams.get("child") || appConfig.childId || "default-child").trim();
+const CHILD_NAME = (urlParams.get("childName") || appConfig.childName || "Lena").trim();
+const defaultAppName = `${CHILD_NAME.toLowerCase().replace(/\s+/g, "-")}_budget`;
+const APP_NAME = (urlParams.get("appName") || appConfig.appName || defaultAppName).trim();
+const STORAGE_KEY = `child-budget-v1:${ACTIVE_FAMILY_ID}:${ACTIVE_CHILD_ID}`;
+window.__ACTIVE_APP_CONTEXT__ = {
+  familyId: ACTIVE_FAMILY_ID,
+  childId: ACTIVE_CHILD_ID,
+};
 
 const state = loadState();
 const chartRef = { instance: null };
@@ -114,7 +120,7 @@ const autoCoachEnabledInput = document.getElementById("autoCoachEnabled");
 const parentMessageStatusEl = document.getElementById("parentMessageStatus");
 const toggleDetailsBtn = document.getElementById("toggleDetailsBtn");
 const extraInsightsEl = document.getElementById("extraInsights");
-const viewMode = new URLSearchParams(window.location.search).get("view");
+const viewMode = urlParams.get("view");
 const mobileParentActionButtons = [
   resetAllDataBtn,
   closeParentPanelBtn,
@@ -558,6 +564,7 @@ function applyInitialViewMode() {
 function setParentPanelOpen(isOpen) {
   parentPanel.classList.toggle("hidden", !isOpen);
   parentPanel.setAttribute("aria-hidden", String(!isOpen));
+  document.body.classList.toggle("parent-mode-active", isOpen);
   if (lenaViewEl) {
     lenaViewEl.setAttribute("data-parent-open", isOpen ? "true" : "false");
   }

@@ -1375,6 +1375,24 @@ label > span {
   padding: 1.4rem 0 2.4rem;
 }
 
+body.parent-mode-active {
+  overflow: hidden;
+}
+
+body.parent-mode-active #lenaView {
+  display: none;
+}
+
+body.parent-mode-active .parent-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  margin-top: 0;
+  padding: 0.9rem 0 1.4rem;
+  overflow-y: auto;
+  background: rgba(247, 241, 251, 0.96);
+}
+
 .parent-mini-dashboard-card {
   margin: 0.15rem 0 1rem;
   padding-top: 1rem;
@@ -1503,6 +1521,21 @@ label > span {
 
 .admin-nav-btn:hover {
   background: #f8f1ff;
+}
+
+.admin-advanced-card summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #4f3b72;
+  list-style: none;
+}
+
+.admin-advanced-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-advanced-card[open] summary {
+  margin-bottom: 0.55rem;
 }
 
 .panel-header h2 {

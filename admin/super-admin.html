@@ -57,7 +57,7 @@
         <div class="hero-text">
           <p class="eyebrow">Child Budget</p>
           <h1>Super Admin</h1>
-          <p class="hero-sub">Families, kinderen en users beheren.</p>
+          <p class="hero-sub">Families beheren (volledig gescheiden per gezin).</p>
           <p id="adminBuildMeta" class="build-pill admin-build-pill">Build 2026-04-28-1623 · wacht op initialisatie...</p>
         </div>
       </header>
@@ -81,7 +81,10 @@
 
       <section id="adminWorkspace" class="grid hidden">
         <article class="card">
-          <h3>Nieuwe family + eerste kind</h3>
+          <h3>Nieuwe, aparte family + kind</h3>
+          <p class="muted">
+            Dit maakt een volledig aparte family aan. Geen link met bestaande families.
+          </p>
           <form id="createFamilyForm" class="form-grid">
             <label>
               <span>Family naam</span>
@@ -96,12 +99,16 @@
               <input id="childSlugInput" type="text" placeholder="lena" required />
             </label>
             <p id="createFamilyStatus" class="muted wide"></p>
+            <p id="createFamilyLink" class="muted wide"></p>
             <button class="btn btn-primary" type="submit">Family aanmaken</button>
           </form>
         </article>
 
-        <article class="card">
-          <h3>Bestaande family · kind toevoegen</h3>
+        <details class="card wide admin-advanced-card">
+          <summary>Geavanceerd (optioneel): extra kind in dezelfde family</summary>
+          <p class="muted">
+            Alleen gebruiken als je bewust meerdere kinderen binnen 1 family wil.
+          </p>
           <form id="createChildForm" class="form-grid">
             <label class="wide">
               <span>Family ID</span>
@@ -116,12 +123,15 @@
               <input id="newChildSlugInput" type="text" placeholder="emma" required />
             </label>
             <p id="createChildStatus" class="muted wide"></p>
-            <button class="btn btn-primary" type="submit">Kind toevoegen</button>
+            <button class="btn btn-primary" type="submit">Kind toevoegen in bestaande family</button>
           </form>
-        </article>
+        </details>
 
-        <article class="card wide">
-          <h3>User aanmaken + rol koppelen</h3>
+        <details class="card wide admin-advanced-card">
+          <summary>Geavanceerd (meestal niet nodig): users/profielen manueel</summary>
+          <p class="muted">
+            Voor de dagelijkse app gebruik je gewoon mama/papa PIN. Deze sectie is enkel technisch beheer.
+          </p>
           <form id="createUserForm" class="form-grid">
             <label class="wide">
               <span>Family ID</span>
@@ -151,7 +161,7 @@
             <p id="createUserStatus" class="muted wide"></p>
             <button class="btn btn-primary" type="submit">User + profile aanmaken</button>
           </form>
-        </article>
+        </details>
 
         <article class="card wide">
           <div class="card-header compact">

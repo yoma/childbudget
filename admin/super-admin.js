@@ -16,6 +16,7 @@ const familyNameInput = document.getElementById("familyNameInput");
 const childNameInput = document.getElementById("childNameInput");
 const childSlugInput = document.getElementById("childSlugInput");
 const createFamilyStatusEl = document.getElementById("createFamilyStatus");
+const createFamilyLinkEl = document.getElementById("createFamilyLink");
 
 const createChildForm = document.getElementById("createChildForm");
 const existingFamilyIdInput = document.getElementById("existingFamilyIdInput");
@@ -51,7 +52,7 @@ async function init() {
     setStatus(
       adminAuthStatusEl,
       "Login niet mogelijk: Supabase client niet geladen (check script-paden/config).",
-      false
+      "error"
     );
     return;
   }
@@ -64,7 +65,7 @@ async function init() {
     }
   } catch (error) {
     renderAdminBuildMeta("offline", "cloud offline");
-    setStatus(adminAuthStatusEl, networkErrorMessage(error), false);
+    setStatus(adminAuthStatusEl, networkErrorMessage(error), "error");
   }
 }
 
@@ -89,19 +90,19 @@ function bindEvents() {
 }
 
 async function handleAdminLogin() {
-  setStatus(adminAuthStatusEl, "Inloggen...", true);
+  setStatus(adminAuthStatusEl, "Inloggen...", "neutral");
   const email = adminEmailInput.value.trim();
   const password = adminPasswordInput.value;
   if (!supabaseClient) {
     setStatus(
       adminAuthStatusEl,
       "Inloggen niet mogelijk: Supabase client ontbreekt. Herlaad pagina of check configuratie.",
-      false
+      "error"
     );
     return;
   }
   if (!email || !password) {
-    setStatus(adminAuthStatusEl, "Vul email en wachtwoord in.", false);
+    setStatus(adminAuthStatusEl, "Vul email en wachtwoord in.", "error");
     return;
   }
 
@@ -113,29 +114,29 @@ async function handleAdminLogin() {
         setStatus(
           adminAuthStatusEl,
           "Inloggen mislukt: email nog niet bevestigd. Zet user op confirmed in Supabase Auth.",
-          false
+          "error"
         );
         return;
       }
-      setStatus(adminAuthStatusEl, `Inloggen mislukt: ${error.message}`, false);
+      setStatus(adminAuthStatusEl, `Inloggen mislukt: ${error.message}`, "error");
       return;
     }
     adminAuthState.email = email;
     adminAuthState.password = password;
-    setStatus(adminAuthStatusEl, "Ingelogd als super admin.", true);
+    setStatus(adminAuthStatusEl, "Ingelogd als super admin.", "success");
     renderAdminBuildMeta("online", "cloud online");
     setWorkspaceVisible(true);
     await refreshOverview();
   } catch (error) {
     renderAdminBuildMeta("offline", "cloud offline");
-    setStatus(adminAuthStatusEl, networkErrorMessage(error), false);
+    setStatus(adminAuthStatusEl, networkErrorMessage(error), "error");
   }
 }
 
 async function handleAdminLogout() {
   await supabaseClient.auth.signOut();
   setWorkspaceVisible(false);
-  setStatus(adminAuthStatusEl, "Uitgelogd.", true);
+  setStatus(adminAuthStatusEl, "Uitgelogd.", "success");
 }
 
 async function handleCreateFamilyWithChild(event) {
@@ -143,11 +144,14 @@ async function handleCreateFamilyWithChild(event) {
   const familyName = familyNameInput.value.trim();
   const childName = childNameInput.value.trim();
   const childSlug = childSlugInput.value.trim().toLowerCase();
-  setStatus(createFamilyStatusEl, "Family aanmaken...", true);
+  setStatus(createFamilyStatusEl, "Family aanmaken...", "neutral");
+  if (createFamilyLinkEl) {
+    createFamilyLinkEl.textContent = "";
+  }
 
   const userId = (await supabaseClient.auth.getUser()).data.user?.id;
   if (!userId) {
-    setStatus(createFamilyStatusEl, "Geen actieve admin sessie.", false);
+    setStatus(createFamilyStatusEl, "Geen actieve admin sessie.", "error");
     return;
   }
 
@@ -158,7 +162,7 @@ async function handleCreateFamilyWithChild(event) {
     .single();
 
   if (familyError) {
-    setStatus(createFamilyStatusEl, `Family aanmaken mislukt: ${familyError.message}`, false);
+    setStatus(createFamilyStatusEl, `Family aanmaken mislukt: ${familyError.message}`, "error");
     return;
   }
 
@@ -171,7 +175,7 @@ async function handleCreateFamilyWithChild(event) {
   });
 
   if (seedProfileError && !seedProfileError.message.toLowerCase().includes("duplicate")) {
-    setStatus(createFamilyStatusEl, `Admin profile koppelen mislukt: ${seedProfileError.message}`, false);
+    setStatus(createFamilyStatusEl, `Admin profile koppelen mislukt: ${seedProfileError.message}`, "error");
     return;
   }
 
@@ -186,35 +190,39 @@ async function handleCreateFamilyWithChild(event) {
     .single();
 
   if (childError) {
-    setStatus(createFamilyStatusEl, `Kind aanmaken mislukt: ${childError.message}`, false);
+    setStatus(createFamilyStatusEl, `Kind aanmaken mislukt: ${childError.message}`, "error");
     return;
   }
 
   existingFamilyIdInput.value = familyId;
   profileFamilyIdInput.value = familyId;
-  setStatus(createFamilyStatusEl, `Klaar. family_id=${familyId} · child_id=${childData.id}`, true);
+  setStatus(createFamilyStatusEl, `Opgeslagen. Family + kind aangemaakt. family_id=${familyId} · child_id=${childData.id}`, "success");
+  if (createFamilyLinkEl) {
+    const appUrl = buildChildAppUrl(familyId, childData.id, childSlug, childName);
+    createFamilyLinkEl.innerHTML = `Open app-link: <a href="${appUrl}" target="_blank" rel="noopener">${appUrl}</a>`;
+  }
   await refreshOverview();
 }
 
 async function handleCreateChild(event) {
   event.preventDefault();
-  setStatus(createChildStatusEl, "Kind toevoegen...", true);
+  setStatus(createChildStatusEl, "Kind toevoegen...", "neutral");
   const { error } = await supabaseClient.from("children").insert({
     family_id: existingFamilyIdInput.value.trim(),
     slug: newChildSlugInput.value.trim().toLowerCase(),
     display_name: newChildNameInput.value.trim(),
   });
   if (error) {
-    setStatus(createChildStatusEl, `Kind toevoegen mislukt: ${error.message}`, false);
+    setStatus(createChildStatusEl, `Kind toevoegen mislukt: ${error.message}`, "error");
     return;
   }
-  setStatus(createChildStatusEl, "Kind toegevoegd.", true);
+  setStatus(createChildStatusEl, "Opgeslagen. Kind toegevoegd.", "success");
   await refreshOverview();
 }
 
 async function handleCreateUserWithProfile(event) {
   event.preventDefault();
-  setStatus(createUserStatusEl, "User aanmaken...", true);
+  setStatus(createUserStatusEl, "User aanmaken...", "neutral");
   const email = newUserEmailInput.value.trim();
   const password = newUserPasswordInput.value;
   const familyId = profileFamilyIdInput.value.trim();
@@ -223,12 +231,12 @@ async function handleCreateUserWithProfile(event) {
 
   const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({ email, password });
   if (signUpError) {
-    setStatus(createUserStatusEl, `Auth user aanmaken mislukt: ${signUpError.message}`, false);
+    setStatus(createUserStatusEl, `Auth user aanmaken mislukt: ${signUpError.message}`, "error");
     return;
   }
   const newUserId = signUpData.user?.id;
   if (!newUserId) {
-    setStatus(createUserStatusEl, "User ID ontbreekt na signUp.", false);
+    setStatus(createUserStatusEl, "User ID ontbreekt na signUp.", "error");
     return;
   }
 
@@ -247,10 +255,10 @@ async function handleCreateUserWithProfile(event) {
   });
 
   if (profileError) {
-    setStatus(createUserStatusEl, `Profile koppelen mislukt: ${profileError.message}`, false);
+    setStatus(createUserStatusEl, `Profile koppelen mislukt: ${profileError.message}`, "error");
     return;
   }
-  setStatus(createUserStatusEl, `User + profile klaar (${role}).`, true);
+  setStatus(createUserStatusEl, `Opgeslagen. User + profile klaar (${role}).`, "success");
   await refreshOverview();
 }
 
@@ -280,7 +288,14 @@ async function refreshOverview() {
           <span>
             <strong>${escapeHtml(family.name)}</strong><br/>
             family_id: ${family.id}<br/>
-            kinderen: ${children.map((c) => `${escapeHtml(c.display_name)} (${escapeHtml(c.slug)})`).join(", ") || "geen"}<br/>
+            kinderen: ${
+              children
+                .map((c) => {
+                  const childUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name);
+                  return `${escapeHtml(c.display_name)} (${escapeHtml(c.slug)}) - <a href="${childUrl}" target="_blank" rel="noopener">open link</a>`;
+                })
+                .join(", ") || "geen"
+            }<br/>
             users: ${profiles.map((p) => `${escapeHtml(p.display_name)} [${escapeHtml(p.role)}]`).join(", ") || "geen"}
           </span>
         </div>
@@ -294,11 +309,20 @@ function setWorkspaceVisible(isVisible) {
   adminLogoutBtn.classList.toggle("hidden", !isVisible);
 }
 
-function setStatus(el, message, isSuccess) {
-  el.textContent = message;
-  el.classList.remove("muted");
-  el.classList.toggle("positive", Boolean(message) && isSuccess);
-  el.classList.toggle("error", Boolean(message) && !isSuccess);
+function setStatus(el, message, kind = "neutral") {
+  if (!el) {
+    return;
+  }
+  const normalizedKind =
+    typeof kind === "boolean" ? (kind ? "success" : "error") : kind;
+  const prefix = normalizedKind === "success" ? "✅ " : normalizedKind === "error" ? "⚠️ " : "";
+  el.textContent =
+    normalizedKind === "neutral" || !message || message.startsWith("✅") || message.startsWith("⚠️")
+      ? message
+      : `${prefix}${message}`;
+  el.classList.toggle("muted", normalizedKind === "neutral");
+  el.classList.toggle("positive", Boolean(message) && normalizedKind === "success");
+  el.classList.toggle("error", Boolean(message) && normalizedKind === "error");
 }
 
 function escapeHtml(text) {
@@ -319,4 +343,20 @@ function networkErrorMessage(error) {
     ? "Je internet werkt, dus dit lijkt een blokkade naar Supabase (adblock, browser-extensie, firewall of bedrijfsnetwerk)."
     : "Je lijkt offline. Controleer je internetverbinding.";
   return `Inloggen mislukt: geen verbinding met Supabase (Failed to fetch). ${onlineHint}`;
+}
+
+function buildChildAppUrl(familyId, childId, childSlug, childName) {
+  const basePath = window.location.pathname.replace(/\/admin\/super-admin\.html$/i, "");
+  const origin = window.location.origin;
+  const params = new URLSearchParams({
+    family: familyId,
+    child: childId,
+  });
+  if (childSlug) {
+    params.set("childSlug", childSlug);
+  }
+  if (childName) {
+    params.set("childName", childName);
+  }
+  return `${origin}${basePath}/index.html?${params.toString()}`;
 }
