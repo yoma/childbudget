@@ -38,6 +38,7 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow-x: hidden;
 }
 
 .bg-glow {
@@ -698,6 +699,64 @@ body {
   color: var(--text-muted);
   font-size: 0.88rem;
   margin: 0;
+}
+
+.build-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.3rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 85, 216, 0.28);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(234, 230, 255, 0.9));
+  box-shadow: 0 7px 16px rgba(96, 85, 216, 0.14);
+  color: #4a3ab7;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  width: fit-content;
+}
+
+.build-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  display: inline-block;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+.build-status-dot.online {
+  background: #25b56f;
+  animation: buildDotPulse 1.9s ease-in-out infinite;
+}
+
+.build-status-dot.warn {
+  background: #f2b233;
+}
+
+.build-status-dot.offline {
+  background: #e15b6f;
+}
+
+@keyframes buildDotPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 0 rgba(37, 181, 111, 0.35);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 7px rgba(37, 181, 111, 0);
+  }
+}
+
+.admin-build-pill {
+  margin-top: 0.2rem;
+  border-color: rgba(45, 174, 152, 0.35);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(225, 248, 243, 0.93));
+  box-shadow: 0 7px 16px rgba(45, 174, 152, 0.16);
+  color: #157865;
 }
 
 .overview-list {
@@ -1400,6 +1459,7 @@ label > span {
 .panel-actions {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .admin-quick-nav {
@@ -1491,6 +1551,41 @@ label > span {
 }
 
 @media (max-width: 640px) {
+  .build-pill {
+    margin-top: 0.38rem;
+    font-size: 0.69rem;
+    padding: 0.24rem 0.52rem;
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.55rem;
+    margin-bottom: 0.8rem;
+  }
+
+  .panel-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.42rem;
+  }
+
+  .panel-actions .btn {
+    width: 100%;
+    min-width: 0;
+    padding: 0.58rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  #loggedInAs,
+  #cloudSyncStatus {
+    font-size: 0.74rem;
+  }
+
   .parent-mini-dashboard {
     grid-template-columns: 1fr;
   }

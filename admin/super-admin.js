@@ -2,7 +2,7 @@ const cfg = window.__SUPABASE_CONFIG__ ?? {};
 const supabase = window.supabase?.createClient?.(cfg.url, cfg.anonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
-const ADMIN_BUILD_VERSION = "2026-04-28-1603";
+const ADMIN_BUILD_VERSION = "2026-04-28-1623";
 
 const adminWorkspaceEl = document.getElementById("adminWorkspace");
 const adminLoginForm = document.getElementById("adminLoginForm");
@@ -43,12 +43,10 @@ const adminAuthState = {
 init();
 
 async function init() {
-  if (adminBuildMetaEl) {
-    const now = new Date();
-    adminBuildMetaEl.textContent = `Build ${ADMIN_BUILD_VERSION} · geladen ${now.toLocaleString("nl-BE")}`;
-  }
+  renderAdminBuildMeta("warn", "cloud check...");
   bindEvents();
   if (!supabase) {
+    renderAdminBuildMeta("offline", "cloud offline");
     setStatus(
       adminAuthStatusEl,
       "Login niet mogelijk: Supabase client niet geladen (check script-paden/config).",
@@ -56,11 +54,20 @@ async function init() {
     );
     return;
   }
-  const { data } = await supabase.auth.getSession();
+  const { data, error } = await supabase.auth.getSession();
+  renderAdminBuildMeta(error ? "offline" : "online", error ? "cloud offline" : "cloud online");
   setWorkspaceVisible(Boolean(data.session));
   if (data.session) {
     await refreshOverview();
   }
+}
+
+function renderAdminBuildMeta(dotClass, cloudLabel) {
+  if (!adminBuildMetaEl) {
+    return;
+  }
+  const now = new Date();
+  adminBuildMetaEl.innerHTML = `<span class="build-status-dot ${dotClass}" aria-hidden="true"></span>Build ${ADMIN_BUILD_VERSION} · geladen ${now.toLocaleString("nl-BE")} · ${cloudLabel}`;
 }
 
 function bindEvents() {

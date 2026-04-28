@@ -29,6 +29,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+const APP_BUILD_VERSION = "2026-04-28-1623";
 const appConfig = window.__SUPABASE_CONFIG__ ?? {};
 const CHILD_NAME = (appConfig.childName || "Lena").trim();
 const defaultAppName = `${CHILD_NAME.toLowerCase()}_budget`;
@@ -45,6 +46,7 @@ const speedRingsEl = document.getElementById("speedRings");
 const clearOverviewEl = document.getElementById("clearOverview");
 const rolloverBreakdownEl = document.getElementById("rolloverBreakdown");
 const appTitleEl = document.getElementById("appTitle");
+const appBuildMetaEl = document.getElementById("appBuildMeta");
 const heroEyebrowEl = document.getElementById("heroEyebrow");
 const heroGreetingEl = document.getElementById("heroGreeting");
 const parentMessageLabelEl = document.getElementById("parentMessageLabel");
@@ -140,6 +142,7 @@ function init() {
   renderLoggedInParent();
   setParentPanelOpen(false);
   initializeCloudConnection();
+  renderBuildMeta();
 
   parentModeBtn.addEventListener("click", () => parentDialog.showModal());
   cancelPinBtn.addEventListener("click", () => {
@@ -427,6 +430,25 @@ function init() {
   render();
 }
 
+function renderBuildMeta() {
+  if (!appBuildMetaEl) {
+    return;
+  }
+  const now = new Date();
+  const cloudMeta = getCloudBuildMeta();
+  appBuildMetaEl.innerHTML = `<span class="build-status-dot ${cloudMeta.dotClass}" aria-hidden="true"></span>Build ${APP_BUILD_VERSION} · geladen ${now.toLocaleString("nl-BE")} · ${cloudMeta.label}`;
+}
+
+function getCloudBuildMeta() {
+  if (!cloudSyncState.configured) {
+    return { dotClass: "warn", label: "cloud niet ingesteld" };
+  }
+  if (cloudSyncState.connected) {
+    return { dotClass: "online", label: "cloud online" };
+  }
+  return { dotClass: "offline", label: "cloud offline" };
+}
+
 function applyBranding() {
   if (appTitleEl) {
     appTitleEl.textContent = APP_NAME;
@@ -483,17 +505,20 @@ function renderCloudSyncStatus() {
     cloudSyncStatusEl.textContent = "Cloud sync: nog niet ingesteld";
     cloudSyncStatusEl.classList.remove("positive");
     cloudSyncStatusEl.classList.add("error");
+    renderBuildMeta();
     return;
   }
   if (cloudSyncState.connected) {
     cloudSyncStatusEl.textContent = "Cloud sync: verbonden met Supabase";
     cloudSyncStatusEl.classList.remove("error");
     cloudSyncStatusEl.classList.add("positive");
+    renderBuildMeta();
     return;
   }
   cloudSyncStatusEl.textContent = `Cloud sync: niet verbonden (${cloudSyncState.lastError})`;
   cloudSyncStatusEl.classList.remove("positive");
   cloudSyncStatusEl.classList.add("error");
+  renderBuildMeta();
 }
 
 // View mode and panel visibility helpers

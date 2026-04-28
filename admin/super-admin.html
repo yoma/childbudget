@@ -15,20 +15,20 @@
           <p class="eyebrow">Child Budget</p>
           <h1>Super Admin</h1>
           <p class="hero-sub">Families, kinderen en users beheren.</p>
-          <p id="adminBuildMeta" class="admin-build-meta">Build 2026-04-28-1603 · wacht op initialisatie...</p>
+          <p id="adminBuildMeta" class="build-pill admin-build-pill">Build 2026-04-28-1623 · wacht op initialisatie...</p>
         </div>
       </header>
 
       <section class="card" id="adminAuthCard">
         <h3>Inloggen als admin</h3>
-        <form id="adminLoginForm" class="form-grid">
+        <form id="adminLoginForm" class="form-grid" novalidate>
           <label>
             <span>Email</span>
-            <input id="adminEmailInput" type="email" placeholder="admin@family.local" required />
+            <input id="adminEmailInput" type="email" placeholder="admin@family.local" required autocomplete="username" />
           </label>
           <label>
             <span>Wachtwoord</span>
-            <input id="adminPasswordInput" type="password" placeholder="••••••••" required />
+            <input id="adminPasswordInput" type="password" placeholder="Typ je wachtwoord" required autocomplete="current-password" />
           </label>
           <p id="adminAuthStatus" class="muted wide"></p>
           <button class="btn btn-primary" type="submit">Inloggen</button>
