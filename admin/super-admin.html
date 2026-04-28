@@ -19,10 +19,25 @@
           statusEl.classList.add("error");
         }
       };
+      window.addEventListener("error", function (event) {
+        const msg = event?.message || "onbekende javascript fout";
+        window.__adminScriptLoadError("runtime: " + msg);
+      });
+      window.addEventListener("unhandledrejection", function (event) {
+        const reason = event?.reason?.message || event?.reason || "onbekende promise fout";
+        window.__adminScriptLoadError("promise: " + reason);
+      });
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="window.__adminScriptLoadError('supabase-js cdn')"></script>
     <script defer src="../assets/js/supabase-config.js" onerror="window.__adminScriptLoadError('supabase-config.js')"></script>
     <script>
+      window.addEventListener("DOMContentLoaded", function () {
+        window.setTimeout(function () {
+          if (!window.__superAdminScriptLoaded) {
+            window.__adminScriptLoadError("super-admin.js timeout");
+          }
+        }, 2500);
+      });
       document.addEventListener("submit", function (event) {
         const target = event.target;
         if (!(target instanceof HTMLFormElement) || target.id !== "adminLoginForm") {

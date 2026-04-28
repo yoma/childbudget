@@ -718,6 +718,21 @@ body {
   width: fit-content;
 }
 
+.hero-text {
+  position: relative;
+}
+
+.app-build-pill {
+  position: absolute;
+  top: -0.12rem;
+  right: -0.2rem;
+  margin-top: 0;
+  padding: 0.16rem 0.44rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  opacity: 0.84;
+}
+
 .build-status-dot {
   width: 0.5rem;
   height: 0.5rem;
@@ -1572,6 +1587,14 @@ label > span {
     max-width: 100%;
     white-space: normal;
     line-height: 1.25;
+  }
+
+  .app-build-pill {
+    top: -0.05rem;
+    right: -0.04rem;
+    padding: 0.12rem 0.34rem;
+    font-size: 0.58rem;
+    opacity: 0.72;
   }
 
   .panel-header {

@@ -130,6 +130,7 @@ const budgetSourceChoiceState = {
   recommendedId: null,
   resolver: null,
 };
+let txTopupArmed = false;
 const cloudSyncState = {
   configured: false,
   connected: false,
@@ -285,7 +286,7 @@ function init() {
     }
     const date = txDateInput.value;
     const category = txCategoryInput.value;
-    const type = txTypeInput.value;
+    const type = txTopupArmed ? "topup" : "expense";
     const rawAmount = Number(txAmountInput.value);
     const month = date.slice(0, 7);
     const editingTx = txEditState.editingId
@@ -1638,7 +1639,9 @@ function handleParentTransactionAction(event) {
     txEditState.editingId = id;
     txDateInput.value = tx.date;
     txCategoryInput.value = tx.category;
-    setTransactionMode(tx.amount < 0 ? "expense" : "topup");
+    const editMode = tx.amount < 0 ? "expense" : "topup";
+    setTransactionMode(editMode);
+    txTopupArmed = editMode === "topup";
     txAmountInput.value = String(Math.abs(tx.amount));
     txNoteInput.value = tx.note ?? "";
     txSubmitBtn.textContent = "Wijziging opslaan";
@@ -1708,6 +1711,7 @@ function resetTransactionFormState() {
   txDateInput.value = new Date().toISOString().slice(0, 10);
   txCategoryInput.value = "zakgeld";
   setTransactionMode("expense");
+  txTopupArmed = false;
   txAmountInput.value = "";
   txNoteInput.value = "";
 }
@@ -1758,6 +1762,7 @@ function handleTopupQuickAmountClick(event) {
   }
   if (target.dataset.topupManual === "true") {
     setTransactionMode("topup");
+    txTopupArmed = true;
     txAmountInput.focus();
     return;
   }
@@ -1766,12 +1771,14 @@ function handleTopupQuickAmountClick(event) {
     return;
   }
   setTransactionMode("topup");
+  txTopupArmed = true;
   txAmountInput.value = String(numeric);
   txAmountInput.focus();
 }
 
 function setTransactionMode(mode) {
   const isTopup = mode === "topup";
+  txTopupArmed = isTopup;
   txTypeInput.value = isTopup ? "topup" : "expense";
   txModeLabel.textContent = isTopup ? "Actief: bijstorting (uitzondering)" : "Standaard: uitgave";
   txModeLabel.classList.toggle("topup", isTopup);
