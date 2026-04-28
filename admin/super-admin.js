@@ -43,6 +43,7 @@ const adminAuthState = {
 init();
 
 async function init() {
+  window.__superAdminBooted = true;
   renderAdminBuildMeta("warn", "cloud check...");
   bindEvents();
   if (!supabase) {

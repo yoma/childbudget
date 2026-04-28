@@ -99,6 +99,7 @@ const txTopupButtons = document.querySelectorAll(".tx-topup-btn");
 const transactionListEl = document.getElementById("transactionList");
 const parentTransactionListEl = document.getElementById("parentTransactionList");
 const parentMiniDashboardEl = document.getElementById("parentMiniDashboard");
+const quickNavButtons = Array.from(document.querySelectorAll(".admin-nav-btn"));
 const parentTxFilterParentInput = document.getElementById("parentTxFilterParent");
 const parentTxFilterCategoryInput = document.getElementById("parentTxFilterCategory");
 const changePinForm = document.getElementById("changePinForm");
@@ -116,6 +117,11 @@ const parentMessageStatusEl = document.getElementById("parentMessageStatus");
 const toggleDetailsBtn = document.getElementById("toggleDetailsBtn");
 const extraInsightsEl = document.getElementById("extraInsights");
 const viewMode = new URLSearchParams(window.location.search).get("view");
+const mobileParentActionButtons = [
+  jumpParentDashboardBtn,
+  resetAllDataBtn,
+  closeParentPanelBtn,
+].filter(Boolean);
 const session = { loggedInParent: null };
 const txEditState = { editingId: null };
 const budgetSourceChoiceState = {
@@ -143,6 +149,8 @@ function init() {
   setParentPanelOpen(false);
   initializeCloudConnection();
   renderBuildMeta();
+  applyResponsiveButtonLabels();
+  window.addEventListener("resize", applyResponsiveButtonLabels);
 
   parentModeBtn.addEventListener("click", () => parentDialog.showModal());
   cancelPinBtn.addEventListener("click", () => {
@@ -437,6 +445,25 @@ function renderBuildMeta() {
   const now = new Date();
   const cloudMeta = getCloudBuildMeta();
   appBuildMetaEl.innerHTML = `<span class="build-status-dot ${cloudMeta.dotClass}" aria-hidden="true"></span>Build ${APP_BUILD_VERSION} · geladen ${now.toLocaleString("nl-BE")} · ${cloudMeta.label}`;
+}
+
+function applyResponsiveButtonLabels() {
+  const isMobile = window.matchMedia("(max-width: 640px)").matches;
+  mobileParentActionButtons.forEach((button) => {
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+    const nextLabel = isMobile ? button.dataset.labelMobile : button.dataset.labelDesktop;
+    if (nextLabel) {
+      button.textContent = nextLabel;
+    }
+  });
+  quickNavButtons.forEach((button) => {
+    const nextLabel = isMobile ? button.dataset.labelMobile : button.dataset.labelDesktop;
+    if (nextLabel) {
+      button.textContent = nextLabel;
+    }
+  });
 }
 
 function getCloudBuildMeta() {

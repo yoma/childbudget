@@ -5,8 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Child Budget · Super Admin</title>
     <link rel="stylesheet" href="../assets/css/styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../assets/js/supabase-config.js"></script>
+    <script>
+      window.__adminScriptLoadError = function (label) {
+        const buildEl = document.getElementById("adminBuildMeta");
+        const statusEl = document.getElementById("adminAuthStatus");
+        if (buildEl) {
+          buildEl.innerHTML = '<span class="build-status-dot offline" aria-hidden="true"></span>Build 2026-04-28-1623 · scriptfout: ' + label;
+        }
+        if (statusEl) {
+          statusEl.textContent = "Script laden mislukt: " + label + ". Upload/check pad en herlaad.";
+          statusEl.classList.remove("positive");
+          statusEl.classList.add("error");
+        }
+      };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="window.__adminScriptLoadError('supabase-js cdn')"></script>
+    <script defer src="../assets/js/supabase-config.js" onerror="window.__adminScriptLoadError('supabase-config.js')"></script>
+    <script>
+      document.addEventListener("submit", function (event) {
+        const target = event.target;
+        if (!(target instanceof HTMLFormElement) || target.id !== "adminLoginForm") {
+          return;
+        }
+        if (window.__superAdminBooted) {
+          return;
+        }
+        event.preventDefault();
+        window.__adminScriptLoadError("super-admin init");
+      });
+    </script>
   </head>
   <body>
     <main class="container">
@@ -120,6 +147,6 @@
       </section>
     </main>
 
-    <script src="./super-admin.js"></script>
+    <script defer src="./super-admin.js" onerror="window.__adminScriptLoadError('super-admin.js')"></script>
   </body>
 </html>

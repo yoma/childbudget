@@ -1551,6 +1551,20 @@ label > span {
 }
 
 @media (max-width: 640px) {
+  .parent-panel {
+    margin-top: 1.2rem;
+    padding: 0.9rem 0 1.6rem;
+  }
+
+  .parent-panel .container {
+    width: min(560px, 94%);
+  }
+
+  .parent-panel .card {
+    border-radius: 18px;
+    padding: 0.95rem;
+  }
+
   .build-pill {
     margin-top: 0.38rem;
     font-size: 0.69rem;
@@ -1570,7 +1584,7 @@ label > span {
   .panel-actions {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap: 0.42rem;
   }
 
@@ -1591,18 +1605,93 @@ label > span {
   }
 
   .admin-quick-nav {
-    top: 0.2rem;
+    top: 0.15rem;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     gap: 0.3rem;
-    padding: 0.38rem;
+    padding: 0.38rem 0.4rem;
+    scrollbar-width: thin;
   }
 
   .admin-nav-btn {
-    font-size: 0.68rem;
-    padding: 0.2rem 0.5rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 0.7rem;
+    padding: 0.28rem 0.58rem;
   }
 
   .parent-transaction-filters {
     grid-template-columns: 1fr;
+  }
+
+  .parent-panel .form-grid {
+    grid-template-columns: 1fr;
+    gap: 0.62rem;
+  }
+
+  .parent-panel input,
+  .parent-panel select,
+  .parent-panel textarea {
+    font-size: 0.95rem;
+    padding: 0.72rem 0.82rem;
+  }
+
+  .tx-item {
+    grid-template-columns: 34px 1fr;
+    align-items: start;
+    gap: 0.55rem;
+  }
+
+  .tx-icon {
+    width: 34px;
+    height: 34px;
+    font-size: 1rem;
+  }
+
+  .tx-body strong {
+    font-size: 0.85rem;
+  }
+
+  .tx-meta {
+    font-size: 0.74rem;
+  }
+
+  .tx-amount {
+    grid-column: 2;
+    justify-self: end;
+    margin-top: 0.2rem;
+    font-size: 0.9rem;
+  }
+
+  .tx-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tx-action-btn {
+    min-height: 34px;
+    font-size: 0.72rem;
+    padding: 0.25rem 0.38rem;
+  }
+
+  .auto-renew-row {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+    padding: 0.45rem 0.52rem;
+  }
+
+  .auto-renew-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.32rem;
+  }
+
+  .auto-renew-btn {
+    width: 100%;
+    text-align: center;
+    padding: 0.34rem 0.45rem;
   }
 }
 
