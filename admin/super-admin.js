@@ -2,6 +2,7 @@ const cfg = window.__SUPABASE_CONFIG__ ?? {};
 const supabase = window.supabase?.createClient?.(cfg.url, cfg.anonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
+const ADMIN_BUILD_VERSION = "2026-04-28-1603";
 
 const adminWorkspaceEl = document.getElementById("adminWorkspace");
 const adminLoginForm = document.getElementById("adminLoginForm");
@@ -29,6 +30,7 @@ const newUserPasswordInput = document.getElementById("newUserPasswordInput");
 const newUserRoleInput = document.getElementById("newUserRoleInput");
 const newUserDisplayNameInput = document.getElementById("newUserDisplayNameInput");
 const createUserStatusEl = document.getElementById("createUserStatus");
+const adminBuildMetaEl = document.getElementById("adminBuildMeta");
 
 const superAdminOverviewEl = document.getElementById("superAdminOverview");
 const refreshOverviewBtn = document.getElementById("refreshOverviewBtn");
@@ -41,6 +43,10 @@ const adminAuthState = {
 init();
 
 async function init() {
+  if (adminBuildMetaEl) {
+    const now = new Date();
+    adminBuildMetaEl.textContent = `Build ${ADMIN_BUILD_VERSION} · geladen ${now.toLocaleString("nl-BE")}`;
+  }
   bindEvents();
   if (!supabase) {
     setStatus(
