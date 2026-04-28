@@ -748,11 +748,10 @@ function renderSpeedRings() {
       const fill = `${Math.min(speedRatio * 100, 100).toFixed(0)}%`;
       const mood = getSpeedMood(speedRatio);
       const paceText = mood === "slow" ? "rustig" : mood === "fast" ? "snel" : "on track";
-      const color = mood === "slow" ? "#66bf94" : mood === "fast" ? "#ef7f9f" : "#f0a253";
 
       return `
-        <div class="speed-ring-card">
-          <div class="speed-ring" style="--fill:${fill}; --ring-color:${color};"></div>
+        <div class="speed-ring-card ${category}">
+          <div class="speed-ring" style="--fill:${fill};"></div>
           <div class="speed-ring-value">${Math.round(usage.usedRatio * 100)}%</div>
           <div class="speed-ring-label">${humanCategory(category)}</div>
           <div class="speed-ring-meta">Tempo: ${paceText}</div>
@@ -782,7 +781,9 @@ function renderCoachAlerts() {
 
   alerts.forEach((alert) => {
     const item = document.createElement("article");
-    item.className = `coach-item ${alert.toneClass} ${alert.showCoachTag === false ? "no-coach-tag" : ""}`;
+    item.className = `coach-item ${alert.toneClass} ${alert.categoryClass ?? ""} ${
+      alert.showCoachTag === false ? "no-coach-tag" : ""
+    }`;
     const coachText = alert.showCoachTag === false ? alert.text : personalizeAutomaticCoachText(alert.text);
     item.innerHTML = `
       <p class="coach-title">${alert.title}</p>
@@ -969,6 +970,7 @@ function createCoachMessage(category, severity, ratio, remaining, dayOfMonth) {
   const idx = getStableIndex(`${category}-${severity}-${currentMonth}-${new Date().getDate()}`, list.length);
   return {
     toneClass: severity === "danger" ? "coach-danger" : severity === "warning" ? "coach-warning" : "coach-soft",
+    categoryClass: `coach-cat-${category}`,
     ...list[idx],
   };
 }

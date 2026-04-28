@@ -19,6 +19,10 @@
   --shadow-soft: 0 12px 30px rgba(150, 110, 200, 0.08);
   --shadow-floating: 0 18px 44px rgba(150, 110, 200, 0.14);
   --shadow-button: 0 8px 18px rgba(214, 168, 238, 0.35);
+  --accent-kleding: #2f5ea2;
+  --accent-kleding-soft: #eaf2ff;
+  --accent-zakgeld: #8d45cc;
+  --accent-zakgeld-soft: #f1e6fb;
 }
 
 * {
@@ -224,11 +228,13 @@ body {
 }
 
 .top-availability-pill.kleding {
-  border-color: rgba(92, 142, 255, 0.25);
+  border-color: rgba(47, 94, 162, 0.32);
+  color: var(--accent-kleding);
 }
 
 .top-availability-pill.zakgeld {
-  border-color: rgba(175, 110, 235, 0.3);
+  border-color: rgba(141, 69, 204, 0.32);
+  color: var(--accent-zakgeld);
 }
 
 @media (max-width: 720px) {
@@ -311,11 +317,11 @@ body {
 }
 
 .overview-matrix-head.kleding {
-  color: #4f78d6;
+  color: var(--accent-kleding);
 }
 
 .overview-matrix-head.zakgeld {
-  color: #8d45cc;
+  color: var(--accent-zakgeld);
 }
 
 .overview-matrix-label {
@@ -340,11 +346,11 @@ body {
 }
 
 .overview-matrix-value.kleding {
-  color: #4f78d6;
+  color: var(--accent-kleding);
 }
 
 .overview-matrix-value.zakgeld {
-  color: #8d45cc;
+  color: var(--accent-zakgeld);
 }
 
 .overview-matrix-value.total {
@@ -445,11 +451,12 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.6rem;
-  margin-top: 0.7rem;
+  margin-top: 1.05rem;
   margin-bottom: 0.65rem;
 }
 
 .speed-ring-card {
+  --ring-accent: var(--accent-zakgeld);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid var(--card-border);
@@ -459,13 +466,20 @@ body {
   gap: 0.34rem;
 }
 
+.speed-ring-card.kleding {
+  --ring-accent: var(--accent-kleding);
+}
+
+.speed-ring-card.zakgeld {
+  --ring-accent: var(--accent-zakgeld);
+}
+
 .speed-ring {
   --fill: 0%;
-  --ring-color: #69be95;
   width: 66px;
   height: 66px;
   border-radius: 50%;
-  background: conic-gradient(var(--ring-color) var(--fill), #ece6f6 0);
+  background: conic-gradient(var(--ring-accent) var(--fill), #ece6f6 0);
   display: grid;
   place-items: center;
 }
@@ -489,7 +503,7 @@ body {
 .speed-ring-label {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #6a5386;
+  color: var(--ring-accent);
 }
 
 .speed-ring-meta {
@@ -533,6 +547,14 @@ body {
 
 .dot-red {
   background: #ef7f9f;
+}
+
+.dot-kleding {
+  background: var(--accent-kleding);
+}
+
+.dot-zakgeld {
+  background: var(--accent-zakgeld);
 }
 
 .coach-alerts {
@@ -613,6 +635,14 @@ body {
   background: linear-gradient(135deg, #ffe5ef, #ffdbe8 55%, #ffd6e3);
   border-left: 6px solid #ef6c9b;
   border-color: rgba(238, 150, 183, 0.72);
+}
+
+.coach-item.coach-cat-kleding {
+  border-right: 4px solid rgba(47, 94, 162, 0.34);
+}
+
+.coach-item.coach-cat-zakgeld {
+  border-right: 4px solid rgba(141, 69, 204, 0.36);
 }
 
 @keyframes coachPopIn {
@@ -890,11 +920,11 @@ body {
 }
 
 .tx-icon-zakgeld {
-  background: linear-gradient(135deg, #e6d4f5, #d6a8ee);
+  background: linear-gradient(135deg, #f1e6fb, #dcbcf5);
 }
 
 .tx-icon-kleding {
-  background: linear-gradient(135deg, #fbe6ee, #f4c2dc);
+  background: linear-gradient(135deg, #eaf2ff, #cfe0fb);
 }
 
 .tx-body {
