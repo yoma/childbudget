@@ -2149,6 +2149,22 @@ function refreshCategorySelectors() {
     budgetCategoryInput.value = enabled[0];
   }
   parentTxFilterCategoryInput.value = filterCurrent === "all" || all.includes(filterCurrent) ? filterCurrent : "all";
+
+  txPresetButtons.forEach((button) => {
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+    const preset = button.dataset.preset;
+    const linkedCategory =
+      preset === "kleding-expense" ? "kleding" : preset === "zakgeld-expense" ? "zakgeld" : null;
+    if (!linkedCategory) {
+      return;
+    }
+    const isEnabled = enabled.includes(linkedCategory);
+    button.classList.toggle("hidden", !isEnabled);
+    button.disabled = !isEnabled;
+    button.setAttribute("aria-hidden", String(!isEnabled));
+  });
 }
 
 function ensureTransactionCategorySelectable(categoryId) {
@@ -2235,6 +2251,15 @@ function handleCategoryConfigListClick(event) {
   const category = getCategoryById(categoryId);
   if (!category) {
     return;
+  }
+  const nextEnabled = category.enabled === false;
+  if (!nextEnabled) {
+    const confirmDisable = window.confirm(
+      `${humanCategory(category.id)} uitschakelen? Dit geldt meteen voor alle gebruikers van ${CHILD_NAME}.`
+    );
+    if (!confirmDisable) {
+      return;
+    }
   }
   if (category.enabled !== false && getEnabledCategoryIds().length <= 1) {
     setCategoryConfigStatus("Minstens 1 categorie moet actief blijven.", false);
