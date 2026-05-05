@@ -1,3 +1,9 @@
+const PARENTS = ["mama", "papa"];
+const defaultCategories = [
+  { id: "zakgeld", label: "Zakgeld", emoji: "💜", enabled: true },
+  { id: "kleding", label: "Kledingsbudget", emoji: "👗", enabled: true },
+];
+
 const defaultState = {
   pins: { mama: "1111", papa: "2222" },
   monthlyBudgets: {},
@@ -10,6 +16,7 @@ const defaultState = {
     papa: { zakgeld: null, kleding: null },
   },
   transactions: [],
+  categories: structuredClone(defaultCategories),
   coachSettings: {
     autoCoachEnabled: true,
     sensitivity: "normal",
@@ -49,6 +56,7 @@ const monthLabelEl = document.getElementById("monthLabel");
 const topAvailabilityBreakdownEl = document.getElementById("topAvailabilityBreakdown");
 const coachAlertsEl = document.getElementById("coachAlerts");
 const speedRingsEl = document.getElementById("speedRings");
+const speedLegendEl = document.getElementById("speedLegend");
 const clearOverviewEl = document.getElementById("clearOverview");
 const rolloverBreakdownEl = document.getElementById("rolloverBreakdown");
 const appTitleEl = document.getElementById("appTitle");
@@ -85,6 +93,11 @@ const budgetAmountInput = document.getElementById("budgetAmount");
 const budgetAutoRenewInput = document.getElementById("budgetAutoRenew");
 const autoRenewCountdownEl = document.getElementById("autoRenewCountdown");
 const autoRenewOverviewEl = document.getElementById("autoRenewOverview");
+const categoryConfigForm = document.getElementById("categoryConfigForm");
+const newCategoryNameInput = document.getElementById("newCategoryNameInput");
+const newCategoryEmojiInput = document.getElementById("newCategoryEmojiInput");
+const categoryConfigStatusEl = document.getElementById("categoryConfigStatus");
+const categoryConfigListEl = document.getElementById("categoryConfigList");
 
 const txForm = document.getElementById("transactionForm");
 const txDateInput = document.getElementById("txDate");
@@ -145,6 +158,7 @@ init();
 
 // App bootstrap and top-level UI state
 function init() {
+  ensureCategoryStructures(state);
   applyBranding();
   monthLabelEl.textContent = formatMonth(currentMonth);
   budgetMonthInput.value = currentMonth;
@@ -211,6 +225,7 @@ function init() {
   parentTxFilterParentInput.addEventListener("change", () => renderTransactions());
   parentTxFilterCategoryInput.addEventListener("change", () => renderTransactions());
   parentTransactionListEl.addEventListener("click", handleParentTransactionAction);
+  categoryConfigListEl?.addEventListener("click", handleCategoryConfigListClick);
   cancelTxEditBtn.addEventListener("click", resetTransactionFormState);
   cancelBudgetSourceBtn.addEventListener("click", () => closeBudgetSourceDialog("cancel"));
   useRecommendedBudgetSourceBtn.addEventListener("click", () => closeBudgetSourceDialog("recommended"));
@@ -229,8 +244,10 @@ function init() {
   txPresetButtons.forEach((button) => {
     button.addEventListener("click", handleTxPresetClick);
   });
+  categoryConfigForm?.addEventListener("submit", handleCategoryConfigSubmit);
 
   applyInitialViewMode();
+  refreshCategorySelectors();
 
   pinForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -260,14 +277,13 @@ function init() {
     const category = budgetCategoryInput.value;
     const amount = Number(budgetAmountInput.value);
 
-    if (!month || Number.isNaN(amount)) {
+    if (!month || !category || Number.isNaN(amount)) {
       return;
     }
 
-    state.monthlyBudgets[month] ??= {
-      zakgeld: { mama: 0, papa: 0 },
-      kleding: { mama: 0, papa: 0 },
-    };
+    state.monthlyBudgets[month] ??= {};
+    ensureCategoryStructures(state);
+    state.monthlyBudgets[month][category] ??= { mama: 0, papa: 0 };
     state.monthlyBudgets[month][category][parent] = amount;
     if (budgetAutoRenewInput.checked) {
       state.recurringBudgets[parent][category] = amount;
@@ -293,7 +309,7 @@ function init() {
       ? state.transactions.find((tx) => tx.id === txEditState.editingId)
       : null;
 
-    if (!date || Number.isNaN(rawAmount) || rawAmount <= 0) {
+    if (!date || !category || Number.isNaN(rawAmount) || rawAmount <= 0) {
       return;
     }
 
@@ -596,7 +612,9 @@ function setChangePinMessage(message, isSuccess) {
 
 // Main render pipeline
 function render() {
-  const categories = ["zakgeld", "kleding"];
+  ensureCategoryStructures(state);
+  refreshCategorySelectors();
+  const categories = getEnabledCategoryIds();
   const categoryData = categories.map((category) => {
     const simulation = simulateCategory(category, currentMonth);
     return {
@@ -619,6 +637,7 @@ function render() {
   renderParentCoachSummary();
   renderParentMiniDashboard(categoryData);
   renderAutoRenewOverview();
+  renderCategoryConfigList();
 
   renderBreakdown(categoryData);
   renderTransactions();
@@ -628,8 +647,8 @@ function render() {
 // Parent budget configuration (auto-renew)
 function renderAutoRenewOverview() {
   const entries = [];
-  ["mama", "papa"].forEach((parent) => {
-    ["kleding", "zakgeld"].forEach((category) => {
+  PARENTS.forEach((parent) => {
+    getAllCategoryIds().forEach((category) => {
       const amount = state.recurringBudgets?.[parent]?.[category] ?? 0;
       if (Math.abs(amount) > 0.004) {
         entries.push({ parent, category, amount });
@@ -648,7 +667,7 @@ function renderAutoRenewOverview() {
   autoRenewOverviewEl.innerHTML = entries
     .map((entry) => {
       const parentLabel = entry.parent === "mama" ? "Mama" : "Papa";
-      const catLabel = entry.category === "kleding" ? "👗 Kleding" : "💜 Zakgeld";
+      const catLabel = `${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}`;
       return `
         <div class="auto-renew-row">
           <span>${parentLabel} · ${catLabel}</span>
@@ -711,35 +730,27 @@ function handleAutoRenewActionClick(event) {
 
 // Top Lena dashboard blocks
 function renderTopAvailability(categoryData) {
-  const kledingAvailable = categoryData.find((entry) => entry.category === "kleding")?.totalRemaining ?? 0;
-  const zakgeldAvailable = categoryData.find((entry) => entry.category === "zakgeld")?.totalRemaining ?? 0;
-  const kledingSplit = getParentRemainingSplit("kleding", currentMonth);
-  const zakgeldSplit = getParentRemainingSplit("zakgeld", currentMonth);
-
-  topAvailabilityBreakdownEl.innerHTML = `
-    <div class="top-availability-pill kleding">
-      <span>👗 Kleding</span>
-      <strong class="${kledingAvailable >= 0 ? "positive" : "negative"}">${currency.format(kledingAvailable)}</strong>
-      <div class="top-availability-split">
-        <span class="parent-mini-pill mama">mama ${currency.format(kledingSplit.mama)}</span>
-        <span class="parent-mini-pill papa">papa ${currency.format(kledingSplit.papa)}</span>
-      </div>
-    </div>
-    <div class="top-availability-pill zakgeld">
-      <span>💜 Zakgeld</span>
-      <strong class="${zakgeldAvailable >= 0 ? "positive" : "negative"}">${currency.format(zakgeldAvailable)}</strong>
-      <div class="top-availability-split">
-        <span class="parent-mini-pill mama">mama ${currency.format(zakgeldSplit.mama)}</span>
-        <span class="parent-mini-pill papa">papa ${currency.format(zakgeldSplit.papa)}</span>
-      </div>
-    </div>
-  `;
+  topAvailabilityBreakdownEl.innerHTML = categoryData
+    .map((entry) => {
+      const split = getParentRemainingSplit(entry.category, currentMonth);
+      return `
+        <div class="top-availability-pill ${entry.category}">
+          <span>${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}</span>
+          <strong class="${entry.totalRemaining >= 0 ? "positive" : "negative"}">${currency.format(entry.totalRemaining)}</strong>
+          <div class="top-availability-split">
+            <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
+            <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function renderSpeedRings() {
   const todayDate = new Date();
   const elapsedRatio = todayDate.getDate() / new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
-  const categories = ["kleding", "zakgeld"];
+  const categories = getEnabledCategoryIds();
 
   speedRingsEl.innerHTML = categories
     .map((category) => {
@@ -749,8 +760,9 @@ function renderSpeedRings() {
       const mood = getSpeedMood(speedRatio);
       const paceText = mood === "slow" ? "rustig" : mood === "fast" ? "snel" : "on track";
 
+      const accentColor = getCategoryColor(category);
       return `
-        <div class="speed-ring-card ${category}">
+          <div class="speed-ring-card ${category}" style="--ring-accent:${accentColor};">
           <div class="speed-ring" style="--fill:${fill};"></div>
           <div class="speed-ring-value">${Math.round(usage.usedRatio * 100)}%</div>
           <div class="speed-ring-label">${humanCategory(category)}</div>
@@ -759,6 +771,15 @@ function renderSpeedRings() {
       `;
     })
     .join("");
+
+  if (speedLegendEl) {
+    speedLegendEl.innerHTML = categories
+      .map(
+        (category) =>
+          `<span><i class="dot" style="background:${getCategoryColor(category)};"></i>${humanCategory(category)}</span>`
+      )
+      .join("");
+  }
 }
 
 function getSpeedMood(speedRatio) {
@@ -797,7 +818,7 @@ function buildAutomaticCoachAlerts() {
   const todayDate = new Date();
   const dayOfMonth = todayDate.getDate();
   const daysInMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
-  const categories = ["kleding", "zakgeld"];
+  const categories = getEnabledCategoryIds();
   const alerts = [];
 
   categories.forEach((category) => {
@@ -1011,8 +1032,14 @@ function personalizeAutomaticCoachText(text) {
 
 function renderParentCoachSummary() {
   pruneExpiredParentMessages();
-  const kleding = getCurrentMonthUsage("kleding");
-  const zakgeld = getCurrentMonthUsage("zakgeld");
+  const categoryRows = getEnabledCategoryIds()
+    .map((category) => {
+      const usage = getCurrentMonthUsage(category);
+      return `<div class="coach-summary-row">${getCategoryEmoji(category)} ${humanCategory(category)}: ${Math.round(
+        usage.usedRatio * 100
+      )}% gebruikt (${currency.format(usage.usedFromMonthBudget)} / ${currency.format(usage.monthBudget)})</div>`;
+    })
+    .join("");
   const autoCoachText = state.coachSettings.autoCoachEnabled ? "Aan" : "Uit";
   const sensitivity = state.coachSettings.sensitivity ?? "normal";
   const sensitivityText = sensitivity === "calm" ? "Rustig" : sensitivity === "strict" ? "Streng" : "Normaal";
@@ -1022,8 +1049,7 @@ function renderParentCoachSummary() {
 
   parentCoachSummaryEl.innerHTML = `
     <div class="coach-summary-row coach-summary-shared">ℹ️ Gedeeld: automatische coach en gevoeligheid gelden voor mama + papa samen.</div>
-    <div class="coach-summary-row">👗 Kleding: ${Math.round(kleding.usedRatio * 100)}% gebruikt (${currency.format(kleding.usedFromMonthBudget)} / ${currency.format(kleding.monthBudget)})</div>
-    <div class="coach-summary-row">💜 Zakgeld: ${Math.round(zakgeld.usedRatio * 100)}% gebruikt (${currency.format(zakgeld.usedFromMonthBudget)} / ${currency.format(zakgeld.monthBudget)})</div>
+    ${categoryRows}
     <div class="coach-summary-row">🔔 Automatische coach (gedeeld): ${autoCoachText}</div>
     <div class="coach-summary-row">🎚️ Gevoeligheid (gedeeld): ${sensitivityText}</div>
     <div class="coach-summary-row">💌 Mama-boodschap: ${mamaUntil}</div>
@@ -1091,42 +1117,25 @@ function formatMessageExpiry(expiresAt) {
 
 // Budget overview and split simulation
 function renderClearOverview(categoryData) {
-  const kleding = getCategorySnapshot("kleding", categoryData);
-  const zakgeld = getCategorySnapshot("zakgeld", categoryData);
-  const kledingSplit = getParentRemainingSplit("kleding", currentMonth);
-  const zakgeldSplit = getParentRemainingSplit("zakgeld", currentMonth);
-
-  clearOverviewEl.innerHTML = `
-    <div class="overview-matrix">
-      <div class="overview-matrix-head empty"></div>
-      <div class="overview-matrix-head kleding">👗 Kleding</div>
-      <div class="overview-matrix-head zakgeld">💜 Zakgeld</div>
-
-      <div class="overview-matrix-label">Nieuw</div>
-      <div class="overview-matrix-value kleding">${currency.format(kleding.monthBudget)}</div>
-      <div class="overview-matrix-value zakgeld">${currency.format(zakgeld.monthBudget)}</div>
-
-      <div class="overview-matrix-label">Over van vorige maanden</div>
-      <div class="overview-matrix-value ${kleding.rolloverFromPrev >= 0 ? "positive" : "negative"}">${currency.format(kleding.rolloverFromPrev)}</div>
-      <div class="overview-matrix-value ${zakgeld.rolloverFromPrev >= 0 ? "positive" : "negative"}">${currency.format(zakgeld.rolloverFromPrev)}</div>
-
-      <div class="overview-matrix-label total">Beschikbaar</div>
-      <div class="overview-matrix-value kleding total">
-        ${currency.format(kleding.availableNow)}
-        <div class="overview-split-mini">
-          <span class="parent-mini-pill mama">mama ${currency.format(kledingSplit.mama)}</span>
-          <span class="parent-mini-pill papa">papa ${currency.format(kledingSplit.papa)}</span>
+  clearOverviewEl.innerHTML = getEnabledCategoryIds()
+    .map((category) => {
+      const snapshot = getCategorySnapshot(category, categoryData);
+      const split = getParentRemainingSplit(category, currentMonth);
+      return `
+        <div class="overview-row">
+          <span>
+            <strong>${getCategoryEmoji(category)} ${humanCategory(category)}</strong><br/>
+            Nieuw: ${currency.format(snapshot.monthBudget)} · Over: ${currency.format(snapshot.rolloverFromPrev)}
+          </span>
+          <strong class="${snapshot.availableNow >= 0 ? "positive" : "negative"}">${currency.format(snapshot.availableNow)}</strong>
+          <div class="overview-split-mini">
+            <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
+            <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
+          </div>
         </div>
-      </div>
-      <div class="overview-matrix-value zakgeld total">
-        ${currency.format(zakgeld.availableNow)}
-        <div class="overview-split-mini">
-          <span class="parent-mini-pill mama">mama ${currency.format(zakgeldSplit.mama)}</span>
-          <span class="parent-mini-pill papa">papa ${currency.format(zakgeldSplit.papa)}</span>
-        </div>
-      </div>
-    </div>
-  `;
+      `;
+    })
+    .join("");
 }
 
 function getCategorySnapshot(category, categoryData) {
@@ -1241,7 +1250,7 @@ async function resolveBudgetUsageDecision({
     return { usage: [], cancelledByUser: false };
   }
   const otherParent = actingParent === "mama" ? "papa" : "mama";
-  const otherCategory = category === "kleding" ? "zakgeld" : "kleding";
+  const otherCategories = getEnabledCategoryIds().filter((item) => item !== category);
   const excludeTxIds = [excludeTxId, ...excludeLinkedTransferIds].filter(Boolean);
 
   const sameCategorySplit = getParentRemainingSplit(category, month, { excludeTxIds });
@@ -1252,10 +1261,10 @@ async function resolveBudgetUsageDecision({
 
   while (remaining > 0) {
     const ownPhase = remaining > 0;
-    const ownCandidates = [{ fromParent: actingParent, fromCategory: otherCategory }];
+    const ownCandidates = otherCategories.map((item) => ({ fromParent: actingParent, fromCategory: item }));
     const otherParentCandidates = [
       { fromParent: otherParent, fromCategory: category },
-      { fromParent: otherParent, fromCategory: otherCategory },
+      ...otherCategories.map((item) => ({ fromParent: otherParent, fromCategory: item })),
     ];
 
     const ownCandidateAvailability = ownCandidates.map((candidate) => {
@@ -1471,23 +1480,32 @@ function renderParentMiniDashboard(categoryData) {
   if (!parentMiniDashboardEl) {
     return;
   }
-  const kledingSplit = getParentRemainingSplit("kleding", currentMonth);
-  const zakgeldSplit = getParentRemainingSplit("zakgeld", currentMonth);
+  const categories = getEnabledCategoryIds();
+  const splitByCategory = Object.fromEntries(
+    categories.map((category) => [category, getParentRemainingSplit(category, currentMonth)])
+  );
   const transferStats = getCrossParentTransferStats(currentMonth);
   const integrity = checkCalculationIntegrity(categoryData);
 
   const renderParentCard = (parentKey, emoji) => {
     const label = parentKey === "mama" ? "Mama" : "Papa";
-    const kleding = kledingSplit[parentKey] ?? 0;
-    const zakgeld = zakgeldSplit[parentKey] ?? 0;
-    const totaal = kleding + zakgeld;
+    const totals = categories.map((category) => ({
+      category,
+      value: splitByCategory[category]?.[parentKey] ?? 0,
+    }));
+    const totaal = sum(totals.map((item) => item.value));
     const stats = transferStats[parentKey];
+    const categoryRows = totals
+      .map(
+        (item) =>
+          `<div><span>${humanCategory(item.category)}</span><strong class="${item.value >= 0 ? "positive" : "negative"}">${currency.format(item.value)}</strong></div>`
+      )
+      .join("");
     return `
       <article class="parent-mini-card ${parentKey}">
         <h4>${emoji} ${label}</h4>
         <div class="parent-mini-grid">
-          <div><span>Kleding</span><strong class="${kleding >= 0 ? "positive" : "negative"}">${currency.format(kleding)}</strong></div>
-          <div><span>Zakgeld</span><strong class="${zakgeld >= 0 ? "positive" : "negative"}">${currency.format(zakgeld)}</strong></div>
+          ${categoryRows}
           <div class="wide"><span>Totaal</span><strong class="${totaal >= 0 ? "positive" : "negative"}">${currency.format(totaal)}</strong></div>
         </div>
         <div class="parent-mini-transfer">
@@ -1536,27 +1554,26 @@ function getCrossParentTransferStats(month) {
 
 function checkCalculationIntegrity(categoryData) {
   const tolerance = 0.02;
-  const kledingTotal = categoryData.find((entry) => entry.category === "kleding")?.totalRemaining ?? 0;
-  const zakgeldTotal = categoryData.find((entry) => entry.category === "zakgeld")?.totalRemaining ?? 0;
-  const kledingSplit = getParentRemainingSplit("kleding", currentMonth);
-  const zakgeldSplit = getParentRemainingSplit("zakgeld", currentMonth);
-
-  const checks = [
-    {
-      label: "kleding",
-      diff: Math.abs(kledingTotal - (kledingSplit.mama + kledingSplit.papa)),
-    },
-    {
-      label: "zakgeld",
-      diff: Math.abs(zakgeldTotal - (zakgeldSplit.mama + zakgeldSplit.papa)),
-    },
-    {
-      label: "totaal",
-      diff: Math.abs(
-        kledingTotal + zakgeldTotal - (kledingSplit.mama + kledingSplit.papa + zakgeldSplit.mama + zakgeldSplit.papa)
-      ),
-    },
-  ];
+  const checks = getEnabledCategoryIds().map((category) => {
+    const total = categoryData.find((entry) => entry.category === category)?.totalRemaining ?? 0;
+    const split = getParentRemainingSplit(category, currentMonth);
+    return {
+      label: humanCategory(category).toLowerCase(),
+      diff: Math.abs(total - (split.mama + split.papa)),
+    };
+  });
+  checks.push({
+    label: "totaal",
+    diff: Math.abs(
+      sum(categoryData.map((entry) => entry.totalRemaining)) -
+        sum(
+          getEnabledCategoryIds().map((category) => {
+            const split = getParentRemainingSplit(category, currentMonth);
+            return split.mama + split.papa;
+          })
+        )
+    ),
+  });
 
   const failed = checks.find((check) => check.diff > tolerance);
   if (!failed) {
@@ -1581,7 +1598,7 @@ function applyParentTransactionFilters(items) {
 function buildTransactionRowsMarkup(items, includeParentName, includeActions = false) {
   return items
     .map((tx) => {
-      const emoji = tx.category === "zakgeld" ? "💜" : "👗";
+      const emoji = getCategoryEmoji(tx.category);
       const dateLabel = formatDate(tx.date);
       const parentName = tx.createdBy === "mama" ? "mama" : tx.createdBy === "papa" ? "papa" : "ouder";
       const usageEntries = Array.isArray(tx.budgetUsage)
@@ -1591,7 +1608,7 @@ function buildTransactionRowsMarkup(items, includeParentName, includeActions = f
           : [];
       const usagePills = usageEntries
         .map((entry) => {
-          const cat = entry.fromCategory === "kleding" ? "kleding" : "zakgeld";
+          const cat = entry.fromCategory;
           const crossParentNote =
             (tx.createdBy === "mama" || tx.createdBy === "papa") && entry.fromParent !== tx.createdBy
               ? ` (bij ${tx.createdBy} transactie)`
@@ -1641,6 +1658,7 @@ function handleParentTransactionAction(event) {
   if (action === "edit-tx") {
     txEditState.editingId = id;
     txDateInput.value = tx.date;
+    ensureTransactionCategorySelectable(tx.category);
     txCategoryInput.value = tx.category;
     const editMode = tx.amount < 0 ? "expense" : "topup";
     setTransactionMode(editMode);
@@ -1712,7 +1730,8 @@ function resetTransactionFormState() {
   txSubmitBtn.textContent = "Transactie opslaan";
   cancelTxEditBtn.classList.add("hidden");
   txDateInput.value = new Date().toISOString().slice(0, 10);
-  txCategoryInput.value = "zakgeld";
+  const fallbackCategory = getEnabledCategoryIds()[0] ?? getAllCategoryIds()[0] ?? "zakgeld";
+  txCategoryInput.value = fallbackCategory;
   setTransactionMode("expense");
   txTopupArmed = false;
   txAmountInput.value = "";
@@ -1746,12 +1765,18 @@ function handleTxPresetClick(event) {
   }
   const preset = target.dataset.preset;
   if (preset === "kleding-expense") {
+    if (!getEnabledCategoryIds().includes("kleding")) {
+      return;
+    }
     txCategoryInput.value = "kleding";
     setTransactionMode("expense");
     txAmountInput.focus();
     return;
   }
   if (preset === "zakgeld-expense") {
+    if (!getEnabledCategoryIds().includes("zakgeld")) {
+      return;
+    }
     txCategoryInput.value = "zakgeld";
     setTransactionMode("expense");
     txAmountInput.focus();
@@ -1804,7 +1829,7 @@ function createLinkedCategoryTransfers({ date, month, targetCategory, usage }) {
     if (!Number.isFinite(amount) || Math.abs(amount) <= 0.004) {
       return;
     }
-    const fromCategory = entry.fromCategory === "kleding" ? "kleding" : "zakgeld";
+    const fromCategory = entry.fromCategory;
     const fromParent = entry.fromParent === "papa" ? "papa" : "mama";
     if (fromCategory === targetCategory) {
       return;
@@ -2061,6 +2086,225 @@ function pruneZeroBuckets(buckets) {
   }
 }
 
+function normalizeCategoryId(raw) {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+function getCategoryById(categoryId) {
+  return (state.categories ?? []).find((entry) => entry.id === categoryId) ?? null;
+}
+
+function getAllCategoryIds() {
+  return (state.categories ?? []).map((entry) => entry.id);
+}
+
+function getEnabledCategoryIds() {
+  return (state.categories ?? []).filter((entry) => entry.enabled !== false).map((entry) => entry.id);
+}
+
+function getCategoryEmoji(categoryId) {
+  return getCategoryById(categoryId)?.emoji || "💠";
+}
+
+function getCategoryColor(categoryId) {
+  if (categoryId === "kleding") {
+    return "#2f5ea2";
+  }
+  if (categoryId === "zakgeld") {
+    return "#8d45cc";
+  }
+  const palette = ["#4a9ca8", "#b86893", "#6f8e3a", "#ad7d44"];
+  return palette[getStableIndex(categoryId, palette.length)];
+}
+
+function refreshCategorySelectors() {
+  const enabled = getEnabledCategoryIds();
+  const all = getAllCategoryIds();
+  const txCurrent = txCategoryInput.value;
+  const budgetCurrent = budgetCategoryInput.value;
+  const filterCurrent = parentTxFilterCategoryInput.value;
+
+  txCategoryInput.innerHTML = enabled
+    .map((category) => `<option value="${category}">${getCategoryEmoji(category)} ${humanCategory(category)}</option>`)
+    .join("");
+  budgetCategoryInput.innerHTML = enabled
+    .map((category) => `<option value="${category}">${getCategoryEmoji(category)} ${humanCategory(category)}</option>`)
+    .join("");
+  parentTxFilterCategoryInput.innerHTML = `<option value="all">Alles</option>${all
+    .map((category) => `<option value="${category}">${humanCategory(category)}</option>`)
+    .join("")}`;
+
+  if (enabled.includes(txCurrent)) {
+    txCategoryInput.value = txCurrent;
+  } else if (enabled.length > 0) {
+    txCategoryInput.value = enabled[0];
+  }
+  if (enabled.includes(budgetCurrent)) {
+    budgetCategoryInput.value = budgetCurrent;
+  } else if (enabled.length > 0) {
+    budgetCategoryInput.value = enabled[0];
+  }
+  parentTxFilterCategoryInput.value = filterCurrent === "all" || all.includes(filterCurrent) ? filterCurrent : "all";
+}
+
+function ensureTransactionCategorySelectable(categoryId) {
+  if (!categoryId) {
+    return;
+  }
+  const existing = Array.from(txCategoryInput.options).some((option) => option.value === categoryId);
+  if (existing) {
+    return;
+  }
+  const extra = document.createElement("option");
+  extra.value = categoryId;
+  extra.textContent = `${getCategoryEmoji(categoryId)} ${humanCategory(categoryId)} (uitgeschakeld)`;
+  txCategoryInput.appendChild(extra);
+}
+
+function renderCategoryConfigList() {
+  if (!categoryConfigListEl) {
+    return;
+  }
+  categoryConfigListEl.innerHTML = (state.categories ?? [])
+    .map((category) => {
+      const activeLabel = category.enabled === false ? "Uitgeschakeld" : "Actief";
+      const actionLabel = category.enabled === false ? "Inschakelen" : "Uitschakelen";
+      return `
+        <div class="auto-renew-row">
+          <span>${category.emoji || "💠"} ${escapeHtml(category.label)} · ${activeLabel}</span>
+          <div class="auto-renew-actions">
+            <button type="button" class="auto-renew-btn" data-action="toggle-category" data-id="${category.id}">${actionLabel}</button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function setCategoryConfigStatus(message, isSuccess) {
+  if (!categoryConfigStatusEl) {
+    return;
+  }
+  categoryConfigStatusEl.textContent = message;
+  categoryConfigStatusEl.classList.toggle("positive", Boolean(message) && isSuccess);
+  categoryConfigStatusEl.classList.toggle("error", Boolean(message) && !isSuccess);
+}
+
+function handleCategoryConfigSubmit(event) {
+  event.preventDefault();
+  if (!session.loggedInParent) {
+    setCategoryConfigStatus("Log eerst in als ouder.", false);
+    return;
+  }
+  const label = newCategoryNameInput.value.trim();
+  const id = normalizeCategoryId(label);
+  const emoji = newCategoryEmojiInput.value.trim() || "💠";
+  if (!label || !id) {
+    setCategoryConfigStatus("Vul een geldige categorienaam in.", false);
+    return;
+  }
+  if (getCategoryById(id)) {
+    setCategoryConfigStatus("Deze categorie bestaat al.", false);
+    return;
+  }
+  state.categories.push({ id, label, emoji, enabled: true });
+  ensureCategoryStructures(state);
+  saveState();
+  newCategoryNameInput.value = "";
+  newCategoryEmojiInput.value = "";
+  setCategoryConfigStatus(`Categorie "${label}" toegevoegd.`, true);
+  render();
+}
+
+function handleCategoryConfigListClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target.dataset.action !== "toggle-category") {
+    return;
+  }
+  const categoryId = target.dataset.id;
+  if (!categoryId) {
+    return;
+  }
+  const category = getCategoryById(categoryId);
+  if (!category) {
+    return;
+  }
+  if (category.enabled !== false && getEnabledCategoryIds().length <= 1) {
+    setCategoryConfigStatus("Minstens 1 categorie moet actief blijven.", false);
+    return;
+  }
+  category.enabled = category.enabled === false;
+  saveState();
+  setCategoryConfigStatus(
+    category.enabled === false
+      ? `${humanCategory(category.id)} staat nu uitgeschakeld.`
+      : `${humanCategory(category.id)} staat opnieuw actief.`,
+    true
+  );
+  render();
+}
+
+function ensureCategoryStructures(stateRef) {
+  const incoming = Array.isArray(stateRef.categories) ? stateRef.categories : [];
+  const seeded = incoming.length > 0 ? incoming : defaultCategories;
+  const unique = [];
+  seeded.forEach((entry) => {
+    const id = normalizeCategoryId(entry.id || entry.label);
+    if (!id || unique.some((item) => item.id === id)) {
+      return;
+    }
+    unique.push({
+      id,
+      label: String(entry.label ?? id),
+      emoji: String(entry.emoji ?? "💠"),
+      enabled: entry.enabled !== false,
+    });
+  });
+  if (unique.length === 0) {
+    unique.push(...structuredClone(defaultCategories));
+  }
+  stateRef.categories = unique;
+
+  stateRef.recurringBudgets ??= {};
+  stateRef.recurringStartMonth ??= {};
+  PARENTS.forEach((parent) => {
+    stateRef.recurringBudgets[parent] ??= {};
+    stateRef.recurringStartMonth[parent] ??= {};
+    unique.forEach((category) => {
+      if (typeof stateRef.recurringBudgets[parent][category.id] !== "number") {
+        stateRef.recurringBudgets[parent][category.id] = 0;
+      }
+      if (typeof stateRef.recurringStartMonth[parent][category.id] !== "string") {
+        stateRef.recurringStartMonth[parent][category.id] = null;
+      }
+    });
+  });
+
+  stateRef.monthlyBudgets ??= {};
+  Object.keys(stateRef.monthlyBudgets).forEach((month) => {
+    const monthEntry = stateRef.monthlyBudgets[month];
+    if (!monthEntry || typeof monthEntry !== "object") {
+      stateRef.monthlyBudgets[month] = {};
+      return;
+    }
+    unique.forEach((category) => {
+      monthEntry[category.id] ??= { mama: 0, papa: 0 };
+      PARENTS.forEach((parent) => {
+        if (typeof monthEntry[category.id][parent] !== "number") {
+          monthEntry[category.id][parent] = 0;
+        }
+      });
+    });
+  });
+}
+
 // State persistence and migrations
 function loadState() {
   try {
@@ -2075,7 +2319,7 @@ function loadState() {
       base.pins = { mama: parsed.pin, papa: parsed.pin };
     }
 
-    return {
+    const merged = {
       ...base,
       ...parsed,
       pins: { ...base.pins, ...(parsed.pins ?? {}) },
@@ -2129,12 +2373,17 @@ function loadState() {
         },
       },
     };
+    ensureCategoryStructures(merged);
+    return merged;
   } catch {
-    return structuredClone(defaultState);
+    const fallback = structuredClone(defaultState);
+    ensureCategoryStructures(fallback);
+    return fallback;
   }
 }
 
 function saveState() {
+  ensureCategoryStructures(state);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
@@ -2157,7 +2406,12 @@ function resetAllData() {
 
 // Generic formatting/math utilities
 function humanCategory(category) {
-  return category === "zakgeld" ? "Zakgeld" : "Kledingsbudget";
+  const match = getCategoryById(category);
+  if (match?.label) {
+    return match.label;
+  }
+  const normalized = String(category ?? "").replace(/[-_]/g, " ").trim();
+  return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : "Categorie";
 }
 
 function formatMonth(value) {

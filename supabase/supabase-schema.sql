@@ -117,7 +117,8 @@ alter table public.transactions enable row level security;
 alter table public.coach_settings enable row level security;
 
 -- Helper: resolve current profile quickly
-create or replace view public.current_profile as
+create or replace view public.current_profile
+with (security_invoker = true) as
 select p.*
 from public.profiles p
 where p.id = auth.uid();

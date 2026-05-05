@@ -45,10 +45,7 @@
         <h2 id="totalRemaining" class="balance-amount">€ 0,00</h2>
         <div id="topAvailabilityBreakdown" class="top-availability-breakdown"></div>
         <div id="speedRings" class="speed-rings"></div>
-        <div class="speed-legend">
-          <span><i class="dot dot-kleding"></i>Kleding</span>
-          <span><i class="dot dot-zakgeld"></i>Zakgeld</span>
-        </div>
+        <div id="speedLegend" class="speed-legend"></div>
         <p id="monthLabel" class="balance-month"></p>
         <div class="balance-chart">
           <canvas id="budgetChart"></canvas>
@@ -232,6 +229,24 @@
               <p id="autoRenewCountdown" class="muted"></p>
               <div id="autoRenewOverview" class="auto-renew-overview"></div>
             </div>
+          </article>
+
+          <article id="adminCategorySection" class="card">
+            <h3>Categorieen beheren</h3>
+            <p class="muted">Deze instellingen gelden gedeeld voor mama, papa en Lena.</p>
+            <form id="categoryConfigForm" class="form-grid">
+              <label>
+                <span>Naam categorie</span>
+                <input id="newCategoryNameInput" type="text" placeholder="Bijv. School of Hobby" maxlength="24" />
+              </label>
+              <label>
+                <span>Emoji (optioneel)</span>
+                <input id="newCategoryEmojiInput" type="text" placeholder="🎒" maxlength="2" />
+              </label>
+              <p id="categoryConfigStatus" class="muted wide"></p>
+              <button class="btn btn-primary" type="submit">Categorie toevoegen</button>
+            </form>
+            <div id="categoryConfigList" class="auto-renew-overview"></div>
           </article>
 
           <article id="adminPinSection" class="card">
