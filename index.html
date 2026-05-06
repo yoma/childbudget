@@ -28,7 +28,7 @@
           <p id="heroEyebrow" class="eyebrow">Lena Money</p>
           <h1 id="heroGreeting">Hey Lena <span class="wave">✨</span></h1>
           <p class="hero-sub">Jouw budget in 1 oogopslag.</p>
-          <p id="appBuildMeta" class="build-pill app-build-pill">Build 2026-05-07-1400 · wacht op initialisatie...</p>
+          <p id="appBuildMeta" class="build-pill app-build-pill">Build 2026-05-07-1530 · wacht op initialisatie...</p>
         </div>
         <button id="parentModeBtn" class="btn-icon" aria-label="Ouder-modus" title="Ouder-modus">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -263,7 +263,7 @@
             <div id="categoryConfigList" class="auto-renew-overview"></div>
           </article>
 
-          <article id="adminKledingSubSection" class="card">
+          <article id="adminKledingSubSection" class="card kleding-admin-split-card">
             <h3>Kledij onderverdelen</h3>
             <p class="muted">
               Stel hier de <strong>verhouding</strong> in (bv. 50 / 12,5 / 27,5). Die geldt op het <strong>totale</strong> kleding-maandbudget
@@ -274,18 +274,20 @@
                 <input type="checkbox" id="kledingSubSplitEnabled" checked />
                 <span>Onderverdeling gebruiken</span>
               </label>
-              <label>
-                <span>Gewone kleding (gewicht)</span>
-                <input type="number" step="0.01" min="0" id="kledingSubBasis" required />
-              </label>
-              <label>
-                <span>Cosmetica (gewicht)</span>
-                <input type="number" step="0.01" min="0" id="kledingSubCosmetica" required />
-              </label>
-              <label>
-                <span>Schoenen / jassen (gewicht)</span>
-                <input type="number" step="0.01" min="0" id="kledingSubSchoenen" required />
-              </label>
+              <div class="kleding-admin-weights wide">
+                <label>
+                  <span>Gewone kleding (gewicht)</span>
+                  <input type="number" step="0.01" min="0" id="kledingSubBasis" required />
+                </label>
+                <label>
+                  <span>Cosmetica (gewicht)</span>
+                  <input type="number" step="0.01" min="0" id="kledingSubCosmetica" required />
+                </label>
+                <label>
+                  <span>Schoenen / jassen (gewicht)</span>
+                  <input type="number" step="0.01" min="0" id="kledingSubSchoenen" required />
+                </label>
+              </div>
               <p id="kledingSubSplitStatus" class="muted wide"></p>
               <button class="btn btn-primary" type="submit">Onderverdeling opslaan</button>
             </form>
@@ -374,7 +376,7 @@
       </div>
     </section>
 
-    <script src="./assets/js/supabase-config.js?v=2026-05-07-1400"></script>
-    <script src="./assets/js/app.js?v=2026-05-07-1400"></script>
+    <script src="./assets/js/supabase-config.js?v=2026-05-07-1530"></script>
+    <script src="./assets/js/app.js?v=2026-05-07-1530"></script>
   </body>
 </html>

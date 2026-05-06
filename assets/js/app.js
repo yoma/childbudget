@@ -39,7 +39,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-07-1400";
+const APP_BUILD_VERSION = "2026-05-07-1530";
 const urlParams = new URLSearchParams(window.location.search);
 const appConfig = window.__SUPABASE_CONFIG__ ?? {};
 const ACTIVE_FAMILY_ID = (urlParams.get("family") || appConfig.familyId || "default-family").trim();
@@ -812,19 +812,21 @@ function renderTopAvailability(categoryData) {
       const split = getParentRemainingSplit(entry.category, currentMonth);
       const subRows =
         entry.category === "kleding" && Array.isArray(entry.kledingSubDetails) && entry.kledingSubDetails.length > 0
-          ? `<div class="kleding-sub-availability">${entry.kledingSubDetails
+          ? `<ul class="kleding-sub-availability-list" aria-label="Kleding onderverdeling">${entry.kledingSubDetails
               .map(
                 (row) =>
-                  `<div class="kleding-sub-availability-row"><span>${escapeHtml(row.label)}</span><strong class="${
+                  `<li><span class="kleding-sub-availability-label">${escapeHtml(row.label)}</span><strong class="kleding-sub-availability-amount ${
                     row.remaining >= 0 ? "positive" : "negative"
-                  }">${currency.format(row.remaining)}</strong></div>`
+                  }">${currency.format(row.remaining)}</strong></li>`
               )
-              .join("")}</div>`
+              .join("")}</ul>`
           : "";
       return `
         <div class="top-availability-pill ${entry.category}">
-          <span>${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}</span>
-          <strong class="${entry.totalRemaining >= 0 ? "positive" : "negative"}">${currency.format(entry.totalRemaining)}</strong>
+          <div class="top-availability-pill-head">
+            <span class="top-availability-pill-title">${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}</span>
+            <strong class="top-availability-pill-total ${entry.totalRemaining >= 0 ? "positive" : "negative"}">${currency.format(entry.totalRemaining)}</strong>
+          </div>
           <div class="top-availability-split">
             <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
             <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
@@ -1213,26 +1215,28 @@ function renderClearOverview(categoryData) {
       const entry = categoryData.find((item) => item.category === category);
       const subBlock =
         category === "kleding" && entry?.kledingSubDetails?.length
-          ? `<div class="kleding-sub-overview">${entry.kledingSubDetails
+          ? `<ul class="kleding-sub-mini-table" aria-label="Kleding onderverdeling">${entry.kledingSubDetails
               .map(
                 (row) =>
-                  `<span class="muted">${escapeHtml(row.label)}: <strong class="${
+                  `<li><span class="kleding-sub-mini-label">${escapeHtml(row.label)}</span><span class="kleding-sub-mini-amount ${
                     row.remaining >= 0 ? "positive" : "negative"
-                  }">${currency.format(row.remaining)}</strong></span>`
+                  }">${currency.format(row.remaining)}</span></li>`
               )
-              .join(" · ")}</div>`
+              .join("")}</ul>`
           : "";
       return `
         <div class="overview-row">
-          <span>
-            <strong>${getCategoryEmoji(category)} ${humanCategory(category)}</strong><br/>
-            Nieuw: ${currency.format(snapshot.monthBudget)} · Over: ${currency.format(snapshot.rolloverFromPrev)}
+          <div class="overview-row-main">
+            <strong class="overview-cat-title">${getCategoryEmoji(category)} ${humanCategory(category)}</strong>
+            <p class="overview-row-meta muted">Nieuw: ${currency.format(snapshot.monthBudget)} · Over: ${currency.format(snapshot.rolloverFromPrev)}</p>
             ${subBlock}
-          </span>
-          <strong class="${snapshot.availableNow >= 0 ? "positive" : "negative"}">${currency.format(snapshot.availableNow)}</strong>
-          <div class="overview-split-mini">
-            <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
-            <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
+          </div>
+          <div class="overview-row-aside">
+            <strong class="overview-total-amount ${snapshot.availableNow >= 0 ? "positive" : "negative"}">${currency.format(snapshot.availableNow)}</strong>
+            <div class="overview-split-mini">
+              <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
+              <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
+            </div>
           </div>
         </div>
       `;
@@ -1579,6 +1583,30 @@ function renderTransactions() {
   }
 }
 
+function buildParentKledingSubStrip(categoryData) {
+  const entry = categoryData.find((item) => item.category === "kleding");
+  if (!entry?.kledingSubDetails?.length || !kledingSubSplitActive()) {
+    return "";
+  }
+  const rows = entry.kledingSubDetails
+    .map(
+      (row) =>
+        `<li><span class="parent-kleding-subs-label">${escapeHtml(row.label)}</span><strong class="parent-kleding-subs-amount ${
+          row.remaining >= 0 ? "positive" : "negative"
+        }">${currency.format(row.remaining)}</strong></li>`
+    )
+    .join("");
+  return `
+    <div class="parent-kleding-subs-strip" role="region" aria-label="Kleding onderverdeling voor Lena">
+      <div class="parent-kleding-subs-strip-head">
+        <span class="parent-kleding-subs-strip-title">👗 Kleding (Lena) — onderverdeling</span>
+        <span class="muted parent-kleding-subs-strip-hint">zelfde verdeling voor beide ouders samen</span>
+      </div>
+      <ul class="parent-kleding-subs-list">${rows}</ul>
+    </div>
+  `;
+}
+
 function renderParentMiniDashboard(categoryData) {
   if (!parentMiniDashboardEl) {
     return;
@@ -1601,7 +1629,7 @@ function renderParentMiniDashboard(categoryData) {
     const categoryRows = totals
       .map(
         (item) =>
-          `<div><span>${humanCategory(item.category)}</span><strong class="${item.value >= 0 ? "positive" : "negative"}">${currency.format(item.value)}</strong></div>`
+          `<div class="parent-mini-cat-cell"><span class="parent-mini-cat-label">${humanCategory(item.category)}</span><strong class="parent-mini-cat-value ${item.value >= 0 ? "positive" : "negative"}">${currency.format(item.value)}</strong></div>`
       )
       .join("");
     return `
@@ -1609,7 +1637,7 @@ function renderParentMiniDashboard(categoryData) {
         <h4>${emoji} ${label}</h4>
         <div class="parent-mini-grid">
           ${categoryRows}
-          <div class="wide"><span>Totaal</span><strong class="${totaal >= 0 ? "positive" : "negative"}">${currency.format(totaal)}</strong></div>
+          <div class="parent-mini-cat-cell wide"><span class="parent-mini-cat-label">Totaal</span><strong class="parent-mini-cat-value ${totaal >= 0 ? "positive" : "negative"}">${currency.format(totaal)}</strong></div>
         </div>
         <div class="parent-mini-transfer">
           <span>Genomen van andere ouder: <strong>${currency.format(stats.takenFromOther)}</strong></span>
@@ -1622,6 +1650,7 @@ function renderParentMiniDashboard(categoryData) {
   parentMiniDashboardEl.innerHTML = `
     ${renderParentCard("mama", "💗")}
     ${renderParentCard("papa", "💙")}
+    ${buildParentKledingSubStrip(categoryData)}
     <div class="parent-mini-integrity ${integrity.ok ? "ok" : "error"}">
       ${integrity.ok ? "✅ Controle: berekeningen kloppen overkoepelend." : `⚠️ Controleverschil: ${integrity.message}`}
     </div>

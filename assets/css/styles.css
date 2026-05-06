@@ -212,19 +212,35 @@ body {
   padding: 0.62rem 0.72rem;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--card-border);
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 0.28rem 0.45rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.38rem;
   font-size: 0.9rem;
   font-weight: 700;
   color: #6f5d88;
 }
 
-.top-availability-pill strong {
-  font-size: 1.14rem;
+.top-availability-pill-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.top-availability-pill-title {
+  font-weight: 700;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.top-availability-pill-total {
+  font-size: 1.12rem;
   font-weight: 800;
   letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  text-align: right;
 }
 
 .top-availability-pill.kleding {
@@ -243,17 +259,45 @@ body {
     font-size: 0.84rem;
   }
 
-  .top-availability-pill strong {
+  .top-availability-pill-total {
     font-size: 1.02rem;
   }
 }
 
 .top-availability-split {
-  margin-top: 0.22rem;
   display: flex;
   gap: 0.28rem;
   flex-wrap: wrap;
-  grid-column: 1 / -1;
+}
+
+.kleding-sub-availability-list {
+  list-style: none;
+  margin: 0.15rem 0 0;
+  padding: 0.42rem 0 0;
+  border-top: 1px dashed rgba(47, 94, 162, 0.28);
+  display: grid;
+  gap: 0.3rem;
+  width: 100%;
+}
+
+.kleding-sub-availability-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: baseline;
+  font-size: 0.76rem;
+  color: #5a4a72;
+}
+
+.kleding-sub-availability-label {
+  min-width: 0;
+  font-weight: 600;
+}
+
+.kleding-sub-availability-amount {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .balance-chart {
@@ -399,11 +443,10 @@ body {
   }
 
   .top-availability-pill {
-    grid-template-columns: 1fr auto;
     padding: 0.56rem 0.6rem;
   }
 
-  .top-availability-pill strong {
+  .top-availability-pill-total {
     font-size: 1.06rem;
   }
 
@@ -809,10 +852,10 @@ body {
 }
 
 .overview-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.8rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem 0.85rem;
   padding: 0.75rem 1rem;
   border-radius: 16px;
   background: var(--card-soft);
@@ -822,6 +865,70 @@ body {
 
 .overview-row:hover {
   transform: translateY(-1px);
+}
+
+.overview-row-main {
+  min-width: 0;
+}
+
+.overview-cat-title {
+  display: block;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--text);
+  margin: 0 0 0.18rem;
+}
+
+.overview-row-meta {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.overview-row-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.38rem;
+  text-align: right;
+  min-width: 5.75rem;
+}
+
+.overview-total-amount {
+  font-size: 1.05rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.kleding-sub-mini-table {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0.42rem 0 0;
+  border-top: 1px dashed rgba(47, 94, 162, 0.22);
+  display: grid;
+  gap: 0.32rem;
+  width: 100%;
+}
+
+.kleding-sub-mini-table li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.76rem;
+}
+
+.kleding-sub-mini-label {
+  color: var(--text-muted);
+  font-weight: 600;
+  min-width: 0;
+}
+
+.kleding-sub-mini-amount {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .overview-row span {
@@ -1068,30 +1175,6 @@ body {
 
 .kleding-sub-pill-label input {
   margin: 0;
-}
-
-.kleding-sub-availability {
-  margin-top: 0.45rem;
-  padding-top: 0.45rem;
-  border-top: 1px dashed rgba(47, 94, 162, 0.25);
-  display: grid;
-  gap: 0.28rem;
-  width: 100%;
-}
-
-.kleding-sub-availability-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.76rem;
-  color: #5a4a72;
-}
-
-.kleding-sub-overview {
-  display: block;
-  margin-top: 0.35rem;
-  font-size: 0.76rem;
-  line-height: 1.45;
 }
 
 .tx-quick-btn {
@@ -1488,6 +1571,11 @@ body.parent-mode-active .parent-panel {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.parent-mini-dashboard > .parent-kleding-subs-strip,
+.parent-mini-dashboard > .parent-mini-integrity {
+  grid-column: 1 / -1;
+}
+
 .parent-mini-card {
   border: 1px solid var(--card-border);
   border-radius: 16px;
@@ -1514,8 +1602,36 @@ body.parent-mode-active .parent-panel {
   gap: 0.06rem;
 }
 
+.parent-mini-grid .parent-mini-cat-cell:not(.wide) {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.parent-mini-cat-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  min-width: 0;
+  flex: 1;
+}
+
+.parent-mini-cat-value {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
 .parent-mini-grid div.wide {
   grid-column: 1 / -1;
+}
+
+.parent-mini-grid .parent-mini-cat-cell.wide {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: baseline;
 }
 
 .parent-mini-grid span {
@@ -1536,6 +1652,70 @@ body.parent-mode-active .parent-panel {
 .parent-mini-transfer span {
   font-size: 0.72rem;
   color: #6a5686;
+}
+
+.parent-kleding-subs-strip {
+  border: 1px solid rgba(47, 94, 162, 0.28);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(234, 242, 255, 0.88));
+  padding: 0.55rem 0.65rem 0.6rem;
+}
+
+.parent-kleding-subs-strip-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.parent-kleding-subs-strip-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #2f5ea2;
+}
+
+.parent-kleding-subs-strip-hint {
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.parent-kleding-subs-list {
+  list-style: none;
+  margin: 0.42rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.parent-kleding-subs-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.76rem;
+  color: #4f3b68;
+}
+
+.parent-kleding-subs-label {
+  font-weight: 600;
+  min-width: 0;
+}
+
+.parent-kleding-subs-amount {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.kleding-admin-split-card .kleding-admin-weights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+@media (max-width: 520px) {
+  .kleding-admin-split-card .kleding-admin-weights {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (min-width: 720px) {
