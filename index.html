@@ -28,7 +28,7 @@
           <p id="heroEyebrow" class="eyebrow">Lena Money</p>
           <h1 id="heroGreeting">Hey Lena <span class="wave">✨</span></h1>
           <p class="hero-sub">Jouw budget in 1 oogopslag.</p>
-          <p id="appBuildMeta" class="build-pill app-build-pill">Build 2026-05-07-1530 · wacht op initialisatie...</p>
+          <p id="appBuildMeta" class="build-pill app-build-pill">Build 2026-05-07-2000 · wacht op initialisatie...</p>
         </div>
         <button id="parentModeBtn" class="btn-icon" aria-label="Ouder-modus" title="Ouder-modus">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -133,7 +133,6 @@
           <button type="button" class="admin-nav-btn" data-target="parentDashboardSection" data-label-desktop="Dashboard" data-label-mobile="Dash">Dashboard</button>
           <button type="button" class="admin-nav-btn" data-target="adminBudgetSection" data-label-desktop="Maandbudget" data-label-mobile="Budget">Maandbudget</button>
           <button type="button" class="admin-nav-btn" data-target="adminCategorySection" data-label-desktop="Categorieen" data-label-mobile="Cat">Categorieen</button>
-          <button type="button" class="admin-nav-btn" data-target="adminKledingSubSection" data-label-desktop="Kledij" data-label-mobile="Kledij">Kledij</button>
           <button type="button" class="admin-nav-btn" data-target="adminPinSection">PIN</button>
           <button type="button" class="admin-nav-btn" data-target="adminCoachSection" data-label-desktop="Coach" data-label-mobile="Coach">Coach</button>
           <button type="button" class="admin-nav-btn" data-target="adminTransactionsSection" data-label-desktop="Transactielijst" data-label-mobile="Transacties">Transactielijst</button>
@@ -163,14 +162,6 @@
               <div class="tx-presets wide" aria-label="Snelle categorie presets">
                 <button type="button" class="tx-preset-btn" data-preset="kleding-expense">👗 Kleding uitgave</button>
                 <button type="button" class="tx-preset-btn" data-preset="zakgeld-expense">💜 Zakgeld uitgave</button>
-              </div>
-              <div id="kledingSubPick" class="wide hidden" aria-live="polite">
-                <span class="muted">Waarvoor in het kleding-budget?</span>
-                <div class="kleding-sub-pills" role="radiogroup" aria-label="Deel kleding-budget">
-                  <label class="kleding-sub-pill-label"><input type="radio" name="kledingSub" value="basis" checked /> Gewone kleding</label>
-                  <label class="kleding-sub-pill-label"><input type="radio" name="kledingSub" value="cosmetica" /> Cosmetica</label>
-                  <label class="kleding-sub-pill-label"><input type="radio" name="kledingSub" value="schoenen" /> Schoenen / jassen</label>
-                </div>
               </div>
               <label>
                 <span>Bedrag (€) (zonder -)</span>
@@ -231,7 +222,24 @@
               </label>
               <label class="wide checkbox-row">
                 <input type="checkbox" id="budgetAutoRenew" />
-                <span>Maandelijks automatisch verlengen</span>
+                <span>Automatisch verlengen (zelfde bedrag volgens schema hieronder)</span>
+              </label>
+              <label id="budgetRecurringIntervalWrap" class="wide hidden">
+                <span>Herhalen elke</span>
+                <select id="budgetRecurringInterval" aria-label="Interval automatische verlenging in maanden">
+                  <option value="1">1 maand (elke maand)</option>
+                  <option value="2">2 maanden</option>
+                  <option value="3">3 maanden</option>
+                  <option value="4">4 maanden</option>
+                  <option value="5">5 maanden</option>
+                  <option value="6">6 maanden</option>
+                  <option value="7">7 maanden</option>
+                  <option value="8">8 maanden</option>
+                  <option value="9">9 maanden</option>
+                  <option value="10">10 maanden</option>
+                  <option value="11">11 maanden</option>
+                  <option value="12">12 maanden</option>
+                </select>
               </label>
               <button class="btn btn-primary" type="submit">Opslaan</button>
             </form>
@@ -245,6 +253,7 @@
             <h3>Categorieen beheren</h3>
             <p class="muted">Deze instellingen gelden gedeeld voor mama, papa en Lena.</p>
             <p class="muted">Let op: uitschakelen geldt direct voor alle gebruikers van dit kind.</p>
+            <p class="muted">Wissen verwijdert alle transacties en budgetregels voor die categorie.</p>
             <p class="muted">
               Tip: categorieën worden per browser en per toestel bewaard. Op je telefoon nog eens uitschakelen als je daar ook geen zakgeld wil zien (tot cloud-sync actief is).
             </p>
@@ -257,40 +266,14 @@
                 <span>Emoji (optioneel)</span>
                 <input id="newCategoryEmojiInput" type="text" placeholder="🎒" maxlength="2" />
               </label>
+              <label>
+                <span>Kleur (grafieken &amp; ringen)</span>
+                <input id="newCategoryColorInput" type="color" value="#4a9ca8" title="Basiskleur voor deze categorie" />
+              </label>
               <p id="categoryConfigStatus" class="muted wide"></p>
               <button class="btn btn-primary" type="submit">Categorie toevoegen</button>
             </form>
             <div id="categoryConfigList" class="auto-renew-overview"></div>
-          </article>
-
-          <article id="adminKledingSubSection" class="card kleding-admin-split-card">
-            <h3>Kledij onderverdelen</h3>
-            <p class="muted">
-              Stel hier de <strong>verhouding</strong> in (bv. 50 / 12,5 / 27,5). Die geldt op het <strong>totale</strong> kleding-maandbudget
-              (mama + papa samen). Als jullie bv. €90 zetten, is dat automatisch €50 + €12,50 + €27,50.
-            </p>
-            <form id="kledingSubSplitForm" class="form-grid">
-              <label class="wide checkbox-row">
-                <input type="checkbox" id="kledingSubSplitEnabled" checked />
-                <span>Onderverdeling gebruiken</span>
-              </label>
-              <div class="kleding-admin-weights wide">
-                <label>
-                  <span>Gewone kleding (gewicht)</span>
-                  <input type="number" step="0.01" min="0" id="kledingSubBasis" required />
-                </label>
-                <label>
-                  <span>Cosmetica (gewicht)</span>
-                  <input type="number" step="0.01" min="0" id="kledingSubCosmetica" required />
-                </label>
-                <label>
-                  <span>Schoenen / jassen (gewicht)</span>
-                  <input type="number" step="0.01" min="0" id="kledingSubSchoenen" required />
-                </label>
-              </div>
-              <p id="kledingSubSplitStatus" class="muted wide"></p>
-              <button class="btn btn-primary" type="submit">Onderverdeling opslaan</button>
-            </form>
           </article>
 
           <article id="adminPinSection" class="card">
@@ -376,7 +359,7 @@
       </div>
     </section>
 
-    <script src="./assets/js/supabase-config.js?v=2026-05-07-1530"></script>
-    <script src="./assets/js/app.js?v=2026-05-07-1530"></script>
+    <script src="./assets/js/supabase-config.js?v=2026-05-07-2000"></script>
+    <script src="./assets/js/app.js?v=2026-05-07-2000"></script>
   </body>
 </html>

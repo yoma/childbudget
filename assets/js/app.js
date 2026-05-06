@@ -1,8 +1,10 @@
 const PARENTS = ["mama", "papa"];
 const defaultCategories = [
-  { id: "zakgeld", label: "Zakgeld", emoji: "💜", enabled: true },
-  { id: "kleding", label: "Kledingsbudget", emoji: "👗", enabled: true },
+  { id: "zakgeld", label: "Zakgeld", emoji: "💜", enabled: true, color: "#8d45cc" },
+  { id: "kleding", label: "Kledingsbudget", emoji: "👗", enabled: true, color: "#2f5ea2" },
 ];
+
+const CATEGORY_COLOR_FALLBACK_PALETTE = ["#4a9ca8", "#b86893", "#6f8e3a", "#ad7d44", "#5c6bc0", "#c2185b"];
 
 const defaultState = {
   pins: { mama: "1111", papa: "2222" },
@@ -15,11 +17,13 @@ const defaultState = {
     mama: { zakgeld: null, kleding: null },
     papa: { zakgeld: null, kleding: null },
   },
+  /** Per ouder+categorie: 1 = elke maand, 2–12 = om de N maanden vanaf startmaand */
+  recurringIntervalMonths: {
+    mama: { zakgeld: 1, kleding: 1 },
+    papa: { zakgeld: 1, kleding: 1 },
+  },
   transactions: [],
   categories: structuredClone(defaultCategories),
-  /** Verhouding van het maand-totaal kleding (mama+papa): getallen zijn gewichten, bv. 50 / 12,5 / 27,5 */
-  kledingSubSplitEnabled: true,
-  kledingSubSplits: { basis: 50, cosmetica: 12.5, schoenen: 27.5 },
   coachSettings: {
     autoCoachEnabled: true,
     sensitivity: "normal",
@@ -39,7 +43,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-07-1530";
+const APP_BUILD_VERSION = "2026-05-07-2000";
 const urlParams = new URLSearchParams(window.location.search);
 const appConfig = window.__SUPABASE_CONFIG__ ?? {};
 const ACTIVE_FAMILY_ID = (urlParams.get("family") || appConfig.familyId || "default-family").trim();
@@ -101,19 +105,16 @@ const budgetMonthInput = document.getElementById("budgetMonth");
 const budgetCategoryInput = document.getElementById("budgetCategory");
 const budgetAmountInput = document.getElementById("budgetAmount");
 const budgetAutoRenewInput = document.getElementById("budgetAutoRenew");
+const budgetRecurringIntervalWrap = document.getElementById("budgetRecurringIntervalWrap");
+const budgetRecurringIntervalInput = document.getElementById("budgetRecurringInterval");
 const autoRenewCountdownEl = document.getElementById("autoRenewCountdown");
 const autoRenewOverviewEl = document.getElementById("autoRenewOverview");
 const categoryConfigForm = document.getElementById("categoryConfigForm");
 const newCategoryNameInput = document.getElementById("newCategoryNameInput");
 const newCategoryEmojiInput = document.getElementById("newCategoryEmojiInput");
+const newCategoryColorInput = document.getElementById("newCategoryColorInput");
 const categoryConfigStatusEl = document.getElementById("categoryConfigStatus");
 const categoryConfigListEl = document.getElementById("categoryConfigList");
-const kledingSubSplitForm = document.getElementById("kledingSubSplitForm");
-const kledingSubSplitEnabledInput = document.getElementById("kledingSubSplitEnabled");
-const kledingSubBasisInput = document.getElementById("kledingSubBasis");
-const kledingSubCosmeticaInput = document.getElementById("kledingSubCosmetica");
-const kledingSubSchoenenInput = document.getElementById("kledingSubSchoenen");
-const kledingSubSplitStatusEl = document.getElementById("kledingSubSplitStatus");
 
 const txForm = document.getElementById("transactionForm");
 const txDateInput = document.getElementById("txDate");
@@ -124,7 +125,6 @@ const txTopupDetails = document.getElementById("txTopupDetails");
 const txAmountInput = document.getElementById("txAmount");
 const txAmountModeHint = document.getElementById("txAmountModeHint");
 const txNoteInput = document.getElementById("txNote");
-const kledingSubPickEl = document.getElementById("kledingSubPick");
 const txSubmitBtn = document.getElementById("txSubmitBtn");
 const cancelTxEditBtn = document.getElementById("cancelTxEditBtn");
 const txPresetButtons = document.querySelectorAll(".tx-preset-btn");
@@ -249,6 +249,8 @@ async function init() {
   parentTxFilterCategoryInput.addEventListener("change", () => renderTransactions());
   parentTransactionListEl.addEventListener("click", handleParentTransactionAction);
   categoryConfigListEl?.addEventListener("click", handleCategoryConfigListClick);
+  categoryConfigListEl?.addEventListener("change", handleCategoryConfigListChange);
+  budgetAutoRenewInput?.addEventListener("change", syncBudgetRecurringIntervalVisibility);
   cancelTxEditBtn.addEventListener("click", resetTransactionFormState);
   cancelBudgetSourceBtn.addEventListener("click", () => closeBudgetSourceDialog("cancel"));
   useRecommendedBudgetSourceBtn.addEventListener("click", () => closeBudgetSourceDialog("recommended"));
@@ -268,8 +270,6 @@ async function init() {
     button.addEventListener("click", handleTxPresetClick);
   });
   categoryConfigForm?.addEventListener("submit", handleCategoryConfigSubmit);
-  kledingSubSplitForm?.addEventListener("submit", handleKledingSubSplitFormSubmit);
-  txCategoryInput.addEventListener("change", updateKledingSubPickVisibility);
 
   applyInitialViewMode();
   refreshCategorySelectors();
@@ -313,11 +313,13 @@ async function init() {
     if (budgetAutoRenewInput.checked) {
       state.recurringBudgets[parent][category] = amount;
       state.recurringStartMonth[parent][category] = month;
+      state.recurringIntervalMonths[parent][category] = readBudgetRecurringIntervalFromForm();
     }
     saveState();
     render();
     budgetAmountInput.value = "";
     budgetAutoRenewInput.checked = false;
+    syncBudgetRecurringIntervalVisibility();
   });
 
   txForm.addEventListener("submit", async (event) => {
@@ -336,11 +338,6 @@ async function init() {
 
     if (!date || !category || Number.isNaN(rawAmount) || rawAmount <= 0) {
       return;
-    }
-
-    let kledingSub = null;
-    if (category === "kleding" && type === "expense" && kledingSubSplitActive()) {
-      kledingSub = getSelectedKledingSubFromForm();
     }
 
     let budgetUsage = [];
@@ -377,11 +374,7 @@ async function init() {
       existing.budgetUsage = budgetUsage;
       existing.borrowFromParent = null;
       existing.borrowAmount = 0;
-      if (category === "kleding" && kledingSub) {
-        existing.kledingSub = kledingSub;
-      } else {
-        delete existing.kledingSub;
-      }
+      delete existing.kledingSub;
       if (Array.isArray(existing.linkedTransferIds) && existing.linkedTransferIds.length > 0) {
         state.transactions = state.transactions.filter((item) => !existing.linkedTransferIds.includes(item.id));
       }
@@ -411,9 +404,6 @@ async function init() {
         budgetUsage,
         linkedTransferIds,
       };
-      if (category === "kleding" && kledingSub) {
-        newTx.kledingSub = kledingSub;
-      }
       state.transactions.push(newTx);
     }
     state.transactions.sort((a, b) => (a.date > b.date ? 1 : -1));
@@ -696,7 +686,6 @@ function render() {
       totalRemaining: sum(simulation.buckets.map((b) => b.amount)),
       buckets: simulation.buckets,
       timeline: simulation.timeline,
-      kledingSubDetails: simulation.kledingSubDetails,
     };
   });
 
@@ -717,8 +706,38 @@ function render() {
   renderBreakdown(categoryData);
   renderTransactions();
   renderChart(categoryData);
-  hydrateKledingSubSplitForm();
-  updateKledingSubPickVisibility();
+  syncBudgetRecurringIntervalVisibility();
+}
+
+function clampRecurringIntervalMonths(raw) {
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n)) {
+    return 1;
+  }
+  return Math.min(12, Math.max(1, n));
+}
+
+function monthIndexFromKey(monthKey) {
+  const [y, m] = String(monthKey).split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) {
+    return 0;
+  }
+  return y * 12 + m;
+}
+
+function readBudgetRecurringIntervalFromForm() {
+  if (!budgetRecurringIntervalInput) {
+    return 1;
+  }
+  return clampRecurringIntervalMonths(budgetRecurringIntervalInput.value);
+}
+
+function syncBudgetRecurringIntervalVisibility() {
+  budgetRecurringIntervalWrap?.classList.toggle("hidden", !budgetAutoRenewInput?.checked);
+}
+
+function getRecurringIntervalFor(parent, category) {
+  return clampRecurringIntervalMonths(state.recurringIntervalMonths?.[parent]?.[category]);
 }
 
 // Parent budget configuration (auto-renew)
@@ -734,7 +753,7 @@ function renderAutoRenewOverview() {
   });
 
   const daysLeft = daysUntilNextMonth();
-  autoRenewCountdownEl.textContent = `Automatische verlenging over ${daysLeft} dag${daysLeft === 1 ? "" : "en"} (op 1ste van volgende maand).`;
+  autoRenewCountdownEl.textContent = `Auto-schema’s gaan verder over ${daysLeft} dag${daysLeft === 1 ? "" : "en"} (op de 1ste van de volgende maand).`;
 
   if (entries.length === 0) {
     autoRenewOverviewEl.innerHTML = `<p class="muted">Nog geen automatische verlenging ingesteld.</p>`;
@@ -745,9 +764,12 @@ function renderAutoRenewOverview() {
     .map((entry) => {
       const parentLabel = entry.parent === "mama" ? "Mama" : "Papa";
       const catLabel = `${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}`;
+      const interval = getRecurringIntervalFor(entry.parent, entry.category);
+      const intervalHint =
+        interval <= 1 ? "elke maand" : `om de ${interval} maanden (vanaf startmaand)`;
       return `
         <div class="auto-renew-row">
-          <span>${parentLabel} · ${catLabel}</span>
+          <span>${parentLabel} · ${catLabel} <span class="muted">· ${intervalHint}</span></span>
           <strong>${currency.format(entry.amount)}</strong>
           <div class="auto-renew-actions">
             <button
@@ -787,6 +809,9 @@ function handleAutoRenewActionClick(event) {
   if (action === "stop") {
     state.recurringBudgets[parent][category] = 0;
     state.recurringStartMonth[parent][category] = null;
+    if (state.recurringIntervalMonths?.[parent]) {
+      delete state.recurringIntervalMonths[parent][category];
+    }
     saveState();
     render();
     return;
@@ -797,6 +822,10 @@ function handleAutoRenewActionClick(event) {
     budgetCategoryInput.value = category;
     budgetAmountInput.value = Number.isNaN(amount) ? "" : String(amount);
     budgetAutoRenewInput.checked = true;
+    if (budgetRecurringIntervalInput) {
+      budgetRecurringIntervalInput.value = String(getRecurringIntervalFor(parent, category));
+    }
+    syncBudgetRecurringIntervalVisibility();
     budgetAmountInput.focus();
     setParentMessageStatus(
       `Klaar om auto-bedrag voor ${parent === "mama" ? "mama" : "papa"} · ${humanCategory(category).toLowerCase()} te wijzigen.`,
@@ -810,17 +839,6 @@ function renderTopAvailability(categoryData) {
   topAvailabilityBreakdownEl.innerHTML = categoryData
     .map((entry) => {
       const split = getParentRemainingSplit(entry.category, currentMonth);
-      const subRows =
-        entry.category === "kleding" && Array.isArray(entry.kledingSubDetails) && entry.kledingSubDetails.length > 0
-          ? `<ul class="kleding-sub-availability-list" aria-label="Kleding onderverdeling">${entry.kledingSubDetails
-              .map(
-                (row) =>
-                  `<li><span class="kleding-sub-availability-label">${escapeHtml(row.label)}</span><strong class="kleding-sub-availability-amount ${
-                    row.remaining >= 0 ? "positive" : "negative"
-                  }">${currency.format(row.remaining)}</strong></li>`
-              )
-              .join("")}</ul>`
-          : "";
       return `
         <div class="top-availability-pill ${entry.category}">
           <div class="top-availability-pill-head">
@@ -831,7 +849,6 @@ function renderTopAvailability(categoryData) {
             <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
             <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
           </div>
-          ${subRows}
         </div>
       `;
     })
@@ -1212,24 +1229,11 @@ function renderClearOverview(categoryData) {
     .map((category) => {
       const snapshot = getCategorySnapshot(category, categoryData);
       const split = getParentRemainingSplit(category, currentMonth);
-      const entry = categoryData.find((item) => item.category === category);
-      const subBlock =
-        category === "kleding" && entry?.kledingSubDetails?.length
-          ? `<ul class="kleding-sub-mini-table" aria-label="Kleding onderverdeling">${entry.kledingSubDetails
-              .map(
-                (row) =>
-                  `<li><span class="kleding-sub-mini-label">${escapeHtml(row.label)}</span><span class="kleding-sub-mini-amount ${
-                    row.remaining >= 0 ? "positive" : "negative"
-                  }">${currency.format(row.remaining)}</span></li>`
-              )
-              .join("")}</ul>`
-          : "";
       return `
         <div class="overview-row">
           <div class="overview-row-main">
             <strong class="overview-cat-title">${getCategoryEmoji(category)} ${humanCategory(category)}</strong>
             <p class="overview-row-meta muted">Nieuw: ${currency.format(snapshot.monthBudget)} · Over: ${currency.format(snapshot.rolloverFromPrev)}</p>
-            ${subBlock}
           </div>
           <div class="overview-row-aside">
             <strong class="overview-total-amount ${snapshot.availableNow >= 0 ? "positive" : "negative"}">${currency.format(snapshot.availableNow)}</strong>
@@ -1548,9 +1552,8 @@ function renderBreakdown(categoryData) {
       const row = document.createElement("div");
       row.className = "rollover-item";
       const monthText = bucket.sourceMonth === "manual" ? "Bijstorting" : formatMonth(bucket.sourceMonth);
-      const subSuffix = bucket.subKey ? ` · ${humanKledingSubLabel(bucket.subKey)}` : "";
       row.innerHTML = `
-        <span>${monthText}${subSuffix}</span>
+        <span>${monthText}</span>
         <strong class="${bucket.amount >= 0 ? "positive" : "negative"}">
           ${currency.format(bucket.amount)}
         </strong>
@@ -1581,30 +1584,6 @@ function renderTransactions() {
   } else {
     parentTransactionListEl.innerHTML = buildTransactionRowsMarkup(filteredParentItems, true, true);
   }
-}
-
-function buildParentKledingSubStrip(categoryData) {
-  const entry = categoryData.find((item) => item.category === "kleding");
-  if (!entry?.kledingSubDetails?.length || !kledingSubSplitActive()) {
-    return "";
-  }
-  const rows = entry.kledingSubDetails
-    .map(
-      (row) =>
-        `<li><span class="parent-kleding-subs-label">${escapeHtml(row.label)}</span><strong class="parent-kleding-subs-amount ${
-          row.remaining >= 0 ? "positive" : "negative"
-        }">${currency.format(row.remaining)}</strong></li>`
-    )
-    .join("");
-  return `
-    <div class="parent-kleding-subs-strip" role="region" aria-label="Kleding onderverdeling voor Lena">
-      <div class="parent-kleding-subs-strip-head">
-        <span class="parent-kleding-subs-strip-title">👗 Kleding (Lena) — onderverdeling</span>
-        <span class="muted parent-kleding-subs-strip-hint">zelfde verdeling voor beide ouders samen</span>
-      </div>
-      <ul class="parent-kleding-subs-list">${rows}</ul>
-    </div>
-  `;
 }
 
 function renderParentMiniDashboard(categoryData) {
@@ -1650,7 +1629,6 @@ function renderParentMiniDashboard(categoryData) {
   parentMiniDashboardEl.innerHTML = `
     ${renderParentCard("mama", "💗")}
     ${renderParentCard("papa", "💙")}
-    ${buildParentKledingSubStrip(categoryData)}
     <div class="parent-mini-integrity ${integrity.ok ? "ok" : "error"}">
       ${integrity.ok ? "✅ Controle: berekeningen kloppen overkoepelend." : `⚠️ Controleverschil: ${integrity.message}`}
     </div>
@@ -1731,10 +1709,6 @@ function buildTransactionRowsMarkup(items, includeParentName, includeActions = f
   return items
     .map((tx) => {
       const emoji = getCategoryEmoji(tx.category);
-      const kledingSubSuffix =
-        tx.category === "kleding" && tx.kledingSub
-          ? ` · ${humanKledingSubLabel(resolveKledingSubKeyFromTx(tx))}`
-          : "";
       const dateLabel = formatDate(tx.date);
       const parentName = tx.createdBy === "mama" ? "mama" : tx.createdBy === "papa" ? "papa" : "ouder";
       const usageEntries = Array.isArray(tx.budgetUsage)
@@ -1756,7 +1730,7 @@ function buildTransactionRowsMarkup(items, includeParentName, includeActions = f
         <div class="tx-item">
           <div class="tx-icon tx-icon-${tx.category}">${emoji}</div>
           <div class="tx-body">
-            <strong>${humanCategory(tx.category)}${kledingSubSuffix}${includeParentName ? ` · ${parentName}` : ""}</strong>
+            <strong>${humanCategory(tx.category)}${includeParentName ? ` · ${parentName}` : ""}</strong>
             <p class="tx-meta">${dateLabel}${tx.note ? ` · ${escapeHtml(tx.note)}` : ""}</p>
             ${usagePills ? `<div class="tx-usage-pills">${usagePills}</div>` : ""}
             ${
@@ -1803,13 +1777,6 @@ function handleParentTransactionAction(event) {
     txNoteInput.value = tx.note ?? "";
     txSubmitBtn.textContent = "Wijziging opslaan";
     cancelTxEditBtn.classList.remove("hidden");
-    const subKey = resolveKledingSubKeyFromTx(tx);
-    document.querySelectorAll('input[name="kledingSub"]').forEach((node) => {
-      if (node instanceof HTMLInputElement) {
-        node.checked = node.value === subKey;
-      }
-    });
-    updateKledingSubPickVisibility();
     txAmountInput.focus();
     return;
   }
@@ -1862,9 +1829,6 @@ function handleParentTransactionAction(event) {
       })),
       linkedTransferIds: reverseLinkedTransferIds,
     };
-    if (tx.category === "kleding" && tx.kledingSub) {
-      reverseTx.kledingSub = tx.kledingSub;
-    }
     state.transactions.push(reverseTx);
     state.transactions.sort((a, b) => (a.date > b.date ? 1 : -1));
     saveState();
@@ -1883,11 +1847,6 @@ function resetTransactionFormState() {
   txTopupArmed = false;
   txAmountInput.value = "";
   txNoteInput.value = "";
-  const basisRadio = document.querySelector('input[name="kledingSub"][value="basis"]');
-  if (basisRadio instanceof HTMLInputElement) {
-    basisRadio.checked = true;
-  }
-  updateKledingSubPickVisibility();
 }
 
 function handleQuickAmountClick(event) {
@@ -1922,7 +1881,6 @@ function handleTxPresetClick(event) {
     }
     txCategoryInput.value = "kleding";
     setTransactionMode("expense");
-    updateKledingSubPickVisibility();
     txAmountInput.focus();
     return;
   }
@@ -1932,7 +1890,6 @@ function handleTxPresetClick(event) {
     }
     txCategoryInput.value = "zakgeld";
     setTransactionMode("expense");
-    updateKledingSubPickVisibility();
     txAmountInput.focus();
   }
 }
@@ -1971,7 +1928,6 @@ function setTransactionMode(mode) {
   if (isTopup) {
     txTopupDetails.open = true;
   }
-  updateKledingSubPickVisibility();
 }
 
 function createLinkedCategoryTransfers({ date, month, targetCategory, usage }) {
@@ -2091,76 +2047,6 @@ function renderChart(categoryData) {
   });
 }
 
-const KLEDING_SUB_KEYS = ["basis", "cosmetica", "schoenen"];
-
-function humanKledingSubLabel(key) {
-  if (key === "cosmetica") {
-    return "Cosmetica";
-  }
-  if (key === "schoenen") {
-    return "Schoenen / jassen";
-  }
-  return "Gewone kleding";
-}
-
-function getKledingSubWeights() {
-  if (!getEnabledCategoryIds().includes("kleding")) {
-    return null;
-  }
-  if (state.kledingSubSplitEnabled === false) {
-    return null;
-  }
-  ensureKledingSplitState(state);
-  const s = state.kledingSubSplits;
-  const basis = Number(s.basis);
-  const cosmetica = Number(s.cosmetica);
-  const schoenen = Number(s.schoenen);
-  const sumW = basis + cosmetica + schoenen;
-  if (!Number.isFinite(sumW) || sumW <= 0.004) {
-    return null;
-  }
-  return { basis: basis / sumW, cosmetica: cosmetica / sumW, schoenen: schoenen / sumW };
-}
-
-function kledingSubSplitActive() {
-  return getKledingSubWeights() !== null;
-}
-
-function resolveKledingSubKeyFromTx(tx) {
-  if (tx.kledingSub === "cosmetica") {
-    return "cosmetica";
-  }
-  if (tx.kledingSub === "schoenen") {
-    return "schoenen";
-  }
-  return "basis";
-}
-
-function simulateKledingUnsplit(upToMonth) {
-  const months = getMonthRange(upToMonth);
-  const buckets = [];
-  const timeline = [];
-  months.forEach((month) => {
-    const contribution =
-      getBudgetAmountForMonth(month, "kleding", "mama") +
-      getBudgetAmountForMonth(month, "kleding", "papa");
-    if (Math.abs(contribution) > 0.004) {
-      addToBucket(buckets, month, contribution);
-    }
-    const txs = state.transactions
-      .filter((tx) => tx.month === month && tx.category === "kleding")
-      .sort((a, b) => (a.date > b.date ? 1 : -1));
-    txs.forEach((tx) => {
-      applySignedTxToBucketList(buckets, tx);
-    });
-    timeline.push({
-      month,
-      total: sum(buckets.map((bucket) => bucket.amount)),
-    });
-  });
-  return { buckets, timeline };
-}
-
 function applySignedTxToBucketList(buckets, tx) {
   if (tx.amount >= 0) {
     addToBucket(buckets, tx.month, tx.amount);
@@ -2186,68 +2072,7 @@ function applySignedTxToBucketList(buckets, tx) {
   pruneZeroBuckets(buckets);
 }
 
-function simulateKledingSplitCategory(upToMonth) {
-  const weights = getKledingSubWeights();
-  if (!weights) {
-    return simulateKledingUnsplit(upToMonth);
-  }
-  const months = getMonthRange(upToMonth);
-  const perSub = { basis: [], cosmetica: [], schoenen: [] };
-  const timeline = [];
-  const subKeys = KLEDING_SUB_KEYS;
-
-  months.forEach((month) => {
-    const contribution =
-      getBudgetAmountForMonth(month, "kleding", "mama") +
-      getBudgetAmountForMonth(month, "kleding", "papa");
-    if (Math.abs(contribution) > 0.004) {
-      subKeys.forEach((sk) => {
-        addToBucket(perSub[sk], month, contribution * weights[sk]);
-      });
-    }
-
-    const txs = state.transactions
-      .filter((tx) => tx.month === month && tx.category === "kleding")
-      .sort((a, b) => (a.date > b.date ? 1 : -1));
-
-    txs.forEach((tx) => {
-      if (tx.amount >= 0) {
-        subKeys.forEach((sk) => {
-          addToBucket(perSub[sk], tx.month, tx.amount * weights[sk]);
-        });
-        subKeys.forEach((sk) => pruneZeroBuckets(perSub[sk]));
-        return;
-      }
-      const sk = resolveKledingSubKeyFromTx(tx);
-      applySignedTxToBucketList(perSub[sk], tx);
-    });
-
-    timeline.push({
-      month,
-      total: sum(subKeys.map((sk) => sum(perSub[sk].map((bucket) => bucket.amount)))),
-    });
-  });
-
-  const mergedBuckets = [];
-  subKeys.forEach((sk) => {
-    perSub[sk].forEach((bucket) => {
-      mergedBuckets.push({ ...bucket, subKey: sk });
-    });
-  });
-
-  const kledingSubDetails = subKeys.map((sk) => ({
-    key: sk,
-    label: humanKledingSubLabel(sk),
-    remaining: sum(perSub[sk].map((bucket) => bucket.amount)),
-  }));
-
-  return { buckets: mergedBuckets, timeline, kledingSubDetails };
-}
-
 function simulateCategory(category, upToMonth) {
-  if (category === "kleding" && kledingSubSplitActive()) {
-    return simulateKledingSplitCategory(upToMonth);
-  }
   const months = getMonthRange(upToMonth);
   const buckets = [];
   const timeline = [];
@@ -2365,7 +2190,15 @@ function getBudgetAmountForMonth(month, category, parent) {
   }
   const configuredStart = state.recurringStartMonth?.[parent]?.[category];
   const startMonth = configuredStart || currentMonth;
-  return month >= startMonth ? recurringAmount : 0;
+  if (month < startMonth) {
+    return 0;
+  }
+  const interval = getRecurringIntervalFor(parent, category);
+  const diff = monthIndexFromKey(month) - monthIndexFromKey(startMonth);
+  if (diff < 0 || diff % interval !== 0) {
+    return 0;
+  }
+  return recurringAmount;
 }
 
 function pruneZeroBuckets(buckets) {
@@ -2382,6 +2215,24 @@ function normalizeCategoryId(raw) {
     .toLowerCase()
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
+}
+
+function normalizeCategoryHexColor(raw) {
+  const s = String(raw ?? "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) {
+    return s.toLowerCase();
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+    const r = s[1];
+    const g = s[2];
+    const b = s[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return "";
+}
+
+function pickFallbackColorForCategoryId(categoryId) {
+  return CATEGORY_COLOR_FALLBACK_PALETTE[getStableIndex(categoryId, CATEGORY_COLOR_FALLBACK_PALETTE.length)];
 }
 
 function getCategoryById(categoryId) {
@@ -2401,14 +2252,17 @@ function getCategoryEmoji(categoryId) {
 }
 
 function getCategoryColor(categoryId) {
+  const fromDefinition = normalizeCategoryHexColor(getCategoryById(categoryId)?.color);
+  if (fromDefinition) {
+    return fromDefinition;
+  }
   if (categoryId === "kleding") {
     return "#2f5ea2";
   }
   if (categoryId === "zakgeld") {
     return "#8d45cc";
   }
-  const palette = ["#4a9ca8", "#b86893", "#6f8e3a", "#ad7d44"];
-  return palette[getStableIndex(categoryId, palette.length)];
+  return pickFallbackColorForCategoryId(categoryId);
 }
 
 function refreshCategorySelectors() {
@@ -2477,15 +2331,33 @@ function renderCategoryConfigList() {
   if (!categoryConfigListEl) {
     return;
   }
+  const canDeleteAny = (state.categories ?? []).length > 1;
   categoryConfigListEl.innerHTML = (state.categories ?? [])
     .map((category) => {
       const activeLabel = category.enabled === false ? "Uitgeschakeld" : "Actief";
       const actionLabel = category.enabled === false ? "Inschakelen" : "Uitschakelen";
+      const swatchHex =
+        normalizeCategoryHexColor(category.color) || pickFallbackColorForCategoryId(category.id);
       return `
-        <div class="auto-renew-row">
-          <span>${category.emoji || "💠"} ${escapeHtml(category.label)} · ${activeLabel}</span>
+        <div class="auto-renew-row category-config-row">
+          <input
+            type="color"
+            class="category-color-input"
+            data-category-color-id="${category.id}"
+            value="${swatchHex}"
+            title="Kleur op Lena-scherm"
+            aria-label="Kleur voor ${escapeHtml(category.label)}"
+          />
+          <span class="category-config-title">${category.emoji || "💠"} ${escapeHtml(category.label)} · ${activeLabel}</span>
           <div class="auto-renew-actions">
             <button type="button" class="auto-renew-btn" data-action="toggle-category" data-id="${category.id}">${actionLabel}</button>
+            <button
+              type="button"
+              class="auto-renew-btn danger"
+              data-action="delete-category"
+              data-id="${category.id}"
+              ${canDeleteAny ? "" : "disabled"}
+            >Wissen</button>
           </div>
         </div>
       `;
@@ -2511,6 +2383,8 @@ function handleCategoryConfigSubmit(event) {
   const label = newCategoryNameInput.value.trim();
   const id = normalizeCategoryId(label);
   const emoji = newCategoryEmojiInput.value.trim() || "💠";
+  const colorNorm =
+    normalizeCategoryHexColor(newCategoryColorInput?.value || "") || pickFallbackColorForCategoryId(id);
   if (!label || !id) {
     setCategoryConfigStatus("Vul een geldige categorienaam in.", false);
     return;
@@ -2519,18 +2393,98 @@ function handleCategoryConfigSubmit(event) {
     setCategoryConfigStatus("Deze categorie bestaat al.", false);
     return;
   }
-  state.categories.push({ id, label, emoji, enabled: true });
+  state.categories.push({ id, label, emoji, enabled: true, color: colorNorm });
   ensureCategoryStructures(state);
   saveState();
   newCategoryNameInput.value = "";
   newCategoryEmojiInput.value = "";
+  if (newCategoryColorInput) {
+    newCategoryColorInput.value = "#4a9ca8";
+  }
   setCategoryConfigStatus(`Categorie "${label}" toegevoegd.`, true);
+  render();
+}
+
+function handleCategoryConfigListChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) {
+    return;
+  }
+  if (!target.dataset.categoryColorId) {
+    return;
+  }
+  if (!session.loggedInParent) {
+    return;
+  }
+  const cat = getCategoryById(target.dataset.categoryColorId);
+  if (!cat) {
+    return;
+  }
+  const hex = normalizeCategoryHexColor(target.value);
+  if (hex) {
+    cat.color = hex;
+  } else {
+    delete cat.color;
+  }
+  saveState();
+  render();
+}
+
+function removeTransactionsForCategory(categoryId) {
+  state.transactions = state.transactions.filter((tx) => tx.category !== categoryId);
+  const existing = new Set(state.transactions.map((t) => t.id).filter(Boolean));
+  state.transactions = state.transactions.filter((tx) => {
+    const links = Array.isArray(tx.linkedTransferIds) ? tx.linkedTransferIds : [];
+    if (links.length === 0) {
+      return true;
+    }
+    return links.every((lid) => existing.has(lid));
+  });
+}
+
+function deleteCategoryByUser(categoryId) {
+  if (!categoryId || !session.loggedInParent) {
+    return;
+  }
+  if ((state.categories ?? []).length <= 1) {
+    setCategoryConfigStatus("Je moet minstens één categorie behouden.", false);
+    return;
+  }
+  const cat = getCategoryById(categoryId);
+  if (!cat) {
+    return;
+  }
+  const nTx = state.transactions.filter((tx) => tx.category === categoryId).length;
+  const confirmMsg = `Categorie "${cat.label}" permanent wissen? Dit verwijdert ${nTx} transactie(s) in deze categorie en alle gekoppelde maand- en automatische budgetregels.`;
+  if (!window.confirm(confirmMsg)) {
+    return;
+  }
+  state.categories = state.categories.filter((c) => c.id !== categoryId);
+  Object.keys(state.monthlyBudgets ?? {}).forEach((monthKey) => {
+    const me = state.monthlyBudgets[monthKey];
+    if (me && typeof me === "object") {
+      delete me[categoryId];
+    }
+  });
+  PARENTS.forEach((parent) => {
+    delete state.recurringBudgets?.[parent]?.[categoryId];
+    delete state.recurringStartMonth?.[parent]?.[categoryId];
+    delete state.recurringIntervalMonths?.[parent]?.[categoryId];
+  });
+  removeTransactionsForCategory(categoryId);
+  ensureCategoryStructures(state);
+  saveState();
+  setCategoryConfigStatus(`Categorie "${cat.label}" is verwijderd.`, true);
   render();
 }
 
 function handleCategoryConfigListClick(event) {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target.dataset.action === "delete-category") {
+    deleteCategoryByUser(target.dataset.id ?? "");
     return;
   }
   if (target.dataset.action !== "toggle-category") {
@@ -2577,11 +2531,13 @@ function ensureCategoryStructures(stateRef) {
     if (!id || unique.some((item) => item.id === id)) {
       return;
     }
+    const colorHex = normalizeCategoryHexColor(entry.color);
     unique.push({
       id,
       label: String(entry.label ?? id),
       emoji: String(entry.emoji ?? "💠"),
       enabled: entry.enabled !== false,
+      ...(colorHex ? { color: colorHex } : {}),
     });
   });
   if (unique.length === 0) {
@@ -2591,9 +2547,11 @@ function ensureCategoryStructures(stateRef) {
 
   stateRef.recurringBudgets ??= {};
   stateRef.recurringStartMonth ??= {};
+  stateRef.recurringIntervalMonths ??= {};
   PARENTS.forEach((parent) => {
     stateRef.recurringBudgets[parent] ??= {};
     stateRef.recurringStartMonth[parent] ??= {};
+    stateRef.recurringIntervalMonths[parent] ??= {};
     unique.forEach((category) => {
       if (typeof stateRef.recurringBudgets[parent][category.id] !== "number") {
         stateRef.recurringBudgets[parent][category.id] = 0;
@@ -2601,6 +2559,25 @@ function ensureCategoryStructures(stateRef) {
       if (typeof stateRef.recurringStartMonth[parent][category.id] !== "string") {
         stateRef.recurringStartMonth[parent][category.id] = null;
       }
+      const intervalRaw = stateRef.recurringIntervalMonths[parent][category.id];
+      stateRef.recurringIntervalMonths[parent][category.id] = clampRecurringIntervalMonths(
+        intervalRaw === undefined || intervalRaw === null ? 1 : intervalRaw
+      );
+    });
+  });
+
+  const validCategoryIds = new Set(unique.map((c) => c.id));
+  PARENTS.forEach((parent) => {
+    ["recurringBudgets", "recurringStartMonth", "recurringIntervalMonths"].forEach((mapKey) => {
+      const mapObj = stateRef[mapKey]?.[parent];
+      if (!mapObj || typeof mapObj !== "object") {
+        return;
+      }
+      Object.keys(mapObj).forEach((catId) => {
+        if (!validCategoryIds.has(catId)) {
+          delete mapObj[catId];
+        }
+      });
     });
   });
 
@@ -2620,86 +2597,12 @@ function ensureCategoryStructures(stateRef) {
       });
     });
   });
-  ensureKledingSplitState(stateRef);
-}
 
-function ensureKledingSplitState(stateRef) {
-  const d = defaultState.kledingSubSplits;
-  stateRef.kledingSubSplits ??= { ...d };
-  stateRef.kledingSubSplits.basis = Number.isFinite(Number(stateRef.kledingSubSplits.basis))
-    ? Number(stateRef.kledingSubSplits.basis)
-    : d.basis;
-  stateRef.kledingSubSplits.cosmetica = Number.isFinite(Number(stateRef.kledingSubSplits.cosmetica))
-    ? Number(stateRef.kledingSubSplits.cosmetica)
-    : d.cosmetica;
-  stateRef.kledingSubSplits.schoenen = Number.isFinite(Number(stateRef.kledingSubSplits.schoenen))
-    ? Number(stateRef.kledingSubSplits.schoenen)
-    : d.schoenen;
-  if (typeof stateRef.kledingSubSplitEnabled !== "boolean") {
-    stateRef.kledingSubSplitEnabled = defaultState.kledingSubSplitEnabled;
-  }
-}
-
-function getSelectedKledingSubFromForm() {
-  const selected = document.querySelector('input[name="kledingSub"]:checked');
-  const value = selected?.value;
-  if (value === "cosmetica" || value === "schoenen") {
-    return value;
-  }
-  return "basis";
-}
-
-function updateKledingSubPickVisibility() {
-  if (!kledingSubPickEl) {
-    return;
-  }
-  const show =
-    kledingSubSplitActive() &&
-    getEnabledCategoryIds().includes("kleding") &&
-    txCategoryInput.value === "kleding" &&
-    !txTopupArmed;
-  kledingSubPickEl.classList.toggle("hidden", !show);
-}
-
-function hydrateKledingSubSplitForm() {
-  if (!kledingSubSplitEnabledInput || !kledingSubBasisInput) {
-    return;
-  }
-  ensureKledingSplitState(state);
-  kledingSubSplitEnabledInput.checked = state.kledingSubSplitEnabled !== false;
-  kledingSubBasisInput.value = String(state.kledingSubSplits.basis);
-  kledingSubCosmeticaInput.value = String(state.kledingSubSplits.cosmetica);
-  kledingSubSchoenenInput.value = String(state.kledingSubSplits.schoenen);
-}
-
-function setKledingSubSplitStatus(message, isSuccess) {
-  if (!kledingSubSplitStatusEl) {
-    return;
-  }
-  kledingSubSplitStatusEl.textContent = message;
-  kledingSubSplitStatusEl.classList.toggle("positive", Boolean(message) && isSuccess);
-  kledingSubSplitStatusEl.classList.toggle("error", Boolean(message) && !isSuccess);
-}
-
-function handleKledingSubSplitFormSubmit(event) {
-  event.preventDefault();
-  if (!session.loggedInParent) {
-    setKledingSubSplitStatus("Log eerst in als ouder.", false);
-    return;
-  }
-  const basis = Number(kledingSubBasisInput.value);
-  const cosmetica = Number(kledingSubCosmeticaInput.value);
-  const schoenen = Number(kledingSubSchoenenInput.value);
-  if (![basis, cosmetica, schoenen].every((n) => Number.isFinite(n) && n >= 0) || basis + cosmetica + schoenen <= 0.004) {
-    setKledingSubSplitStatus("Vul drie geldige gewichten in (som groter dan 0).", false);
-    return;
-  }
-  state.kledingSubSplitEnabled = kledingSubSplitEnabledInput.checked;
-  state.kledingSubSplits = { basis, cosmetica, schoenen };
-  ensureKledingSplitState(state);
-  saveState();
-  setKledingSubSplitStatus("Opgeslagen. Uitgaven kies je voortaan per deel.", true);
-  render();
+  (stateRef.transactions ?? []).forEach((tx) => {
+    if (tx && typeof tx === "object") {
+      delete tx.kledingSub;
+    }
+  });
 }
 
 // State persistence and migrations
@@ -2725,6 +2628,12 @@ function mergeParsedIntoBase(parsed) {
       ...(parsed.recurringStartMonth ?? {}),
       mama: { ...base.recurringStartMonth.mama, ...(parsed.recurringStartMonth?.mama ?? {}) },
       papa: { ...base.recurringStartMonth.papa, ...(parsed.recurringStartMonth?.papa ?? {}) },
+    },
+    recurringIntervalMonths: {
+      ...base.recurringIntervalMonths,
+      ...(parsed.recurringIntervalMonths ?? {}),
+      mama: { ...base.recurringIntervalMonths.mama, ...(parsed.recurringIntervalMonths?.mama ?? {}) },
+      papa: { ...base.recurringIntervalMonths.papa, ...(parsed.recurringIntervalMonths?.papa ?? {}) },
     },
     coachSettings: {
       ...base.coachSettings,
@@ -2763,22 +2672,9 @@ function mergeParsedIntoBase(parsed) {
         },
       },
     },
-    kledingSubSplitEnabled:
-      typeof parsed.kledingSubSplitEnabled === "boolean"
-        ? parsed.kledingSubSplitEnabled
-        : base.kledingSubSplitEnabled,
-    kledingSubSplits: {
-      basis: Number.isFinite(Number(parsed.kledingSubSplits?.basis))
-        ? Number(parsed.kledingSubSplits.basis)
-        : base.kledingSubSplits.basis,
-      cosmetica: Number.isFinite(Number(parsed.kledingSubSplits?.cosmetica))
-        ? Number(parsed.kledingSubSplits.cosmetica)
-        : base.kledingSubSplits.cosmetica,
-      schoenen: Number.isFinite(Number(parsed.kledingSubSplits?.schoenen))
-        ? Number(parsed.kledingSubSplits.schoenen)
-        : base.kledingSubSplits.schoenen,
-    },
   };
+  delete merged.kledingSubSplitEnabled;
+  delete merged.kledingSubSplits;
   ensureCategoryStructures(merged);
   return merged;
 }
