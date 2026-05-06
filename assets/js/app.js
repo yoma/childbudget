@@ -25,6 +25,8 @@ const defaultState = {
       papa: { text: "", expiresAt: null },
     },
   },
+  /** Op elke wijziging verhoogd; gebruikt om nieuwste versie tussen toestellen te kiezen */
+  syncRevision: 0,
 };
 
 const currency = new Intl.NumberFormat("nl-BE", {
@@ -34,7 +36,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-04-28-1623";
+const APP_BUILD_VERSION = "2026-05-07-1000";
 const urlParams = new URLSearchParams(window.location.search);
 const appConfig = window.__SUPABASE_CONFIG__ ?? {};
 const ACTIVE_FAMILY_ID = (urlParams.get("family") || appConfig.familyId || "default-family").trim();
@@ -47,6 +49,11 @@ window.__ACTIVE_APP_CONTEXT__ = {
   familyId: ACTIVE_FAMILY_ID,
   childId: ACTIVE_CHILD_ID,
 };
+
+function looksLikeUuid(value) {
+  const s = String(value ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
 
 const state = loadState();
 const chartRef = { instance: null };
@@ -151,13 +158,18 @@ const cloudSyncState = {
   configured: false,
   connected: false,
   lastError: "",
+  syncEligible: false,
+  lastSyncError: "",
+  lastSyncedAt: null,
 };
+let cloudPushTimer = null;
 const supabaseClient = createSupabaseClient();
 
-init();
+void init();
 
 // App bootstrap and top-level UI state
-function init() {
+async function init() {
+  cloudSyncState.syncEligible = looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID);
   ensureCategoryStructures(state);
   applyBranding();
   monthLabelEl.textContent = formatMonth(currentMonth);
@@ -165,7 +177,8 @@ function init() {
   txDateInput.value = new Date().toISOString().slice(0, 10);
   renderLoggedInParent();
   setParentPanelOpen(false);
-  initializeCloudConnection();
+  await initializeCloudConnection();
+  await hydrateFromCloudSnapshot();
   renderBuildMeta();
   applyResponsiveButtonLabels();
   window.addEventListener("resize", applyResponsiveButtonLabels);
@@ -452,6 +465,9 @@ function init() {
     renderParentCoachSummary();
   });
 
+  window.addEventListener("beforeunload", flushScheduledCloudPush);
+  window.addEventListener("pagehide", flushScheduledCloudPush);
+
   render();
 }
 
@@ -487,10 +503,19 @@ function getCloudBuildMeta() {
   if (!cloudSyncState.configured) {
     return { dotClass: "warn", label: "cloud niet ingesteld" };
   }
-  if (cloudSyncState.connected) {
-    return { dotClass: "online", label: "cloud online" };
+  if (!cloudSyncState.connected) {
+    return { dotClass: "offline", label: "cloud offline" };
   }
-  return { dotClass: "offline", label: "cloud offline" };
+  if (cloudSyncState.syncEligible && cloudSyncState.lastSyncError) {
+    return { dotClass: "offline", label: "sync-fout" };
+  }
+  if (cloudSyncState.syncEligible && cloudSyncState.lastSyncedAt) {
+    return { dotClass: "online", label: "cloud · data gesynchroniseerd" };
+  }
+  if (cloudSyncState.syncEligible) {
+    return { dotClass: "online", label: "cloud · sync actief" };
+  }
+  return { dotClass: "online", label: "cloud online" };
 }
 
 function applyBranding() {
@@ -552,16 +577,39 @@ function renderCloudSyncStatus() {
     renderBuildMeta();
     return;
   }
-  if (cloudSyncState.connected) {
-    cloudSyncStatusEl.textContent = "Cloud sync: verbonden met Supabase";
+  if (!cloudSyncState.connected) {
+    cloudSyncStatusEl.textContent = `Cloud sync: niet verbonden (${cloudSyncState.lastError})`;
+    cloudSyncStatusEl.classList.remove("positive");
+    cloudSyncStatusEl.classList.add("error");
+    renderBuildMeta();
+    return;
+  }
+  if (!cloudSyncState.syncEligible) {
+    cloudSyncStatusEl.textContent =
+      "Cloud sync: verbonden — gebruik family + kind UUID in de link of config om tussen toestellen te synchroniseren.";
     cloudSyncStatusEl.classList.remove("error");
     cloudSyncStatusEl.classList.add("positive");
     renderBuildMeta();
     return;
   }
-  cloudSyncStatusEl.textContent = `Cloud sync: niet verbonden (${cloudSyncState.lastError})`;
-  cloudSyncStatusEl.classList.remove("positive");
-  cloudSyncStatusEl.classList.add("error");
+  if (cloudSyncState.lastSyncError) {
+    cloudSyncStatusEl.textContent = `Cloud sync: fout bij opslaan/ laden (${cloudSyncState.lastSyncError}).`;
+    cloudSyncStatusEl.classList.remove("positive");
+    cloudSyncStatusEl.classList.add("error");
+    renderBuildMeta();
+    return;
+  }
+  if (cloudSyncState.lastSyncedAt) {
+    const when = new Date(cloudSyncState.lastSyncedAt).toLocaleString("nl-BE");
+    cloudSyncStatusEl.textContent = `Cloud sync: actief · laatst bijgewerkt ${when}`;
+    cloudSyncStatusEl.classList.remove("error");
+    cloudSyncStatusEl.classList.add("positive");
+    renderBuildMeta();
+    return;
+  }
+  cloudSyncStatusEl.textContent = "Cloud sync: actief · budget wordt online bijgehouden voor dit kind.";
+  cloudSyncStatusEl.classList.remove("error");
+  cloudSyncStatusEl.classList.add("positive");
   renderBuildMeta();
 }
 
@@ -2150,7 +2198,7 @@ function refreshCategorySelectors() {
   }
   parentTxFilterCategoryInput.value = filterCurrent === "all" || all.includes(filterCurrent) ? filterCurrent : "all";
 
-  txPresetButtons.forEach((button) => {
+  document.querySelectorAll(".tx-preset-btn").forEach((button) => {
     if (!(button instanceof HTMLElement)) {
       return;
     }
@@ -2162,8 +2210,10 @@ function refreshCategorySelectors() {
     }
     const isEnabled = enabled.includes(linkedCategory);
     button.classList.toggle("hidden", !isEnabled);
+    button.classList.toggle("tx-preset-hidden", !isEnabled);
     button.disabled = !isEnabled;
     button.setAttribute("aria-hidden", String(!isEnabled));
+    button.style.display = isEnabled ? "" : "none";
   });
 }
 
@@ -2331,75 +2381,193 @@ function ensureCategoryStructures(stateRef) {
 }
 
 // State persistence and migrations
+function mergeParsedIntoBase(parsed) {
+  const base = structuredClone(defaultState);
+
+  if (parsed.pin && !parsed.pins) {
+    base.pins = { mama: parsed.pin, papa: parsed.pin };
+  }
+
+  const merged = {
+    ...base,
+    ...parsed,
+    pins: { ...base.pins, ...(parsed.pins ?? {}) },
+    recurringBudgets: {
+      ...base.recurringBudgets,
+      ...(parsed.recurringBudgets ?? {}),
+      mama: { ...base.recurringBudgets.mama, ...(parsed.recurringBudgets?.mama ?? {}) },
+      papa: { ...base.recurringBudgets.papa, ...(parsed.recurringBudgets?.papa ?? {}) },
+    },
+    recurringStartMonth: {
+      ...base.recurringStartMonth,
+      ...(parsed.recurringStartMonth ?? {}),
+      mama: { ...base.recurringStartMonth.mama, ...(parsed.recurringStartMonth?.mama ?? {}) },
+      papa: { ...base.recurringStartMonth.papa, ...(parsed.recurringStartMonth?.papa ?? {}) },
+    },
+    coachSettings: {
+      ...base.coachSettings,
+      ...(parsed.coachSettings ?? {}),
+      autoCoachEnabled: parsed.coachSettings?.autoCoachEnabled ?? base.coachSettings.autoCoachEnabled,
+      parentMessages: {
+        ...base.coachSettings.parentMessages,
+        ...(parsed.coachSettings?.parentMessages ?? {}),
+        mama: {
+          ...base.coachSettings.parentMessages.mama,
+          ...(parsed.coachSettings?.parentMessages?.mama ?? {}),
+          text:
+            typeof parsed.coachSettings?.parentMessages?.mama === "string"
+              ? parsed.coachSettings.parentMessages.mama
+              : parsed.coachSettings?.parentMessages?.mama?.text ??
+                base.coachSettings.parentMessages.mama.text,
+          expiresAt:
+            typeof parsed.coachSettings?.parentMessages?.mama === "string"
+              ? null
+              : parsed.coachSettings?.parentMessages?.mama?.expiresAt ??
+                base.coachSettings.parentMessages.mama.expiresAt,
+        },
+        papa: {
+          ...base.coachSettings.parentMessages.papa,
+          ...(parsed.coachSettings?.parentMessages?.papa ?? {}),
+          text:
+            typeof parsed.coachSettings?.parentMessages?.papa === "string"
+              ? parsed.coachSettings.parentMessages.papa
+              : parsed.coachSettings?.parentMessages?.papa?.text ??
+                base.coachSettings.parentMessages.papa.text,
+          expiresAt:
+            typeof parsed.coachSettings?.parentMessages?.papa === "string"
+              ? null
+              : parsed.coachSettings?.parentMessages?.papa?.expiresAt ??
+                base.coachSettings.parentMessages.papa.expiresAt,
+        },
+      },
+    },
+  };
+  ensureCategoryStructures(merged);
+  return merged;
+}
+
+function replaceAppState(nextMerged) {
+  Object.keys(state).forEach((key) => {
+    delete state[key];
+  });
+  Object.assign(state, nextMerged);
+  ensureCategoryStructures(state);
+}
+
+async function hydrateFromCloudSnapshot() {
+  cloudSyncState.syncEligible = looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID);
+  cloudSyncState.lastSyncError = "";
+
+  if (!supabaseClient || !cloudSyncState.connected || !cloudSyncState.syncEligible) {
+    renderCloudSyncStatus();
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseClient
+      .from("child_budget_snapshots")
+      .select("payload, updated_at")
+      .eq("child_id", ACTIVE_CHILD_ID)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    const localRev = Number(state.syncRevision) || 0;
+
+    if (!data?.payload || typeof data.payload !== "object") {
+      await pushCloudSnapshot({ silent: true });
+      cloudSyncState.lastSyncedAt = Date.now();
+      renderCloudSyncStatus();
+      return;
+    }
+
+    const remoteMerged = mergeParsedIntoBase(data.payload);
+    const remoteRev =
+      Number(remoteMerged.syncRevision) || new Date(data.updated_at).getTime() || 0;
+
+    if (remoteRev > localRev) {
+      replaceAppState(remoteMerged);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      cloudSyncState.lastSyncedAt = Date.now();
+      renderCloudSyncStatus();
+      return;
+    }
+
+    if (localRev > remoteRev) {
+      await pushCloudSnapshot({ silent: true });
+      cloudSyncState.lastSyncedAt = Date.now();
+    } else {
+      cloudSyncState.lastSyncedAt = new Date(data.updated_at).getTime();
+    }
+  } catch (err) {
+    cloudSyncState.lastSyncError = err?.message ?? String(err);
+  }
+  renderCloudSyncStatus();
+}
+
+async function pushCloudSnapshot(options = {}) {
+  if (!supabaseClient || !cloudSyncState.connected || !cloudSyncState.syncEligible) {
+    return;
+  }
+  try {
+    state.syncRevision = Math.max(Number(state.syncRevision) || 0, Date.now());
+    ensureCategoryStructures(state);
+    const payload = JSON.parse(JSON.stringify(state));
+    const { error } = await supabaseClient.from("child_budget_snapshots").upsert(
+      {
+        child_id: ACTIVE_CHILD_ID,
+        family_id: ACTIVE_FAMILY_ID,
+        payload,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "child_id" }
+    );
+    if (error) {
+      throw error;
+    }
+    cloudSyncState.lastSyncError = "";
+    cloudSyncState.lastSyncedAt = Date.now();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (err) {
+    cloudSyncState.lastSyncError = err?.message ?? String(err);
+    if (!options.silent) {
+      console.warn("Cloud snapshot push mislukt", err);
+    }
+  }
+  renderCloudSyncStatus();
+}
+
+function schedulePushCloudSnapshot() {
+  if (!supabaseClient || !cloudSyncState.connected || !cloudSyncState.syncEligible) {
+    return;
+  }
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(() => {
+    cloudPushTimer = null;
+    void pushCloudSnapshot({ silent: true });
+  }, 900);
+}
+
+function flushScheduledCloudPush() {
+  if (!cloudPushTimer) {
+    return;
+  }
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = null;
+  void pushCloudSnapshot({ silent: true });
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return structuredClone(defaultState);
+      const fresh = structuredClone(defaultState);
+      ensureCategoryStructures(fresh);
+      return fresh;
     }
-    const parsed = JSON.parse(raw);
-    const base = structuredClone(defaultState);
-
-    if (parsed.pin && !parsed.pins) {
-      base.pins = { mama: parsed.pin, papa: parsed.pin };
-    }
-
-    const merged = {
-      ...base,
-      ...parsed,
-      pins: { ...base.pins, ...(parsed.pins ?? {}) },
-      recurringBudgets: {
-        ...base.recurringBudgets,
-        ...(parsed.recurringBudgets ?? {}),
-        mama: { ...base.recurringBudgets.mama, ...(parsed.recurringBudgets?.mama ?? {}) },
-        papa: { ...base.recurringBudgets.papa, ...(parsed.recurringBudgets?.papa ?? {}) },
-      },
-      recurringStartMonth: {
-        ...base.recurringStartMonth,
-        ...(parsed.recurringStartMonth ?? {}),
-        mama: { ...base.recurringStartMonth.mama, ...(parsed.recurringStartMonth?.mama ?? {}) },
-        papa: { ...base.recurringStartMonth.papa, ...(parsed.recurringStartMonth?.papa ?? {}) },
-      },
-      coachSettings: {
-        ...base.coachSettings,
-        ...(parsed.coachSettings ?? {}),
-        autoCoachEnabled: parsed.coachSettings?.autoCoachEnabled ?? base.coachSettings.autoCoachEnabled,
-        parentMessages: {
-          ...base.coachSettings.parentMessages,
-          ...(parsed.coachSettings?.parentMessages ?? {}),
-          mama: {
-            ...base.coachSettings.parentMessages.mama,
-            ...(parsed.coachSettings?.parentMessages?.mama ?? {}),
-            text:
-              typeof parsed.coachSettings?.parentMessages?.mama === "string"
-                ? parsed.coachSettings.parentMessages.mama
-                : parsed.coachSettings?.parentMessages?.mama?.text ??
-                  base.coachSettings.parentMessages.mama.text,
-            expiresAt:
-              typeof parsed.coachSettings?.parentMessages?.mama === "string"
-                ? null
-                : parsed.coachSettings?.parentMessages?.mama?.expiresAt ??
-                  base.coachSettings.parentMessages.mama.expiresAt,
-          },
-          papa: {
-            ...base.coachSettings.parentMessages.papa,
-            ...(parsed.coachSettings?.parentMessages?.papa ?? {}),
-            text:
-              typeof parsed.coachSettings?.parentMessages?.papa === "string"
-                ? parsed.coachSettings.parentMessages.papa
-                : parsed.coachSettings?.parentMessages?.papa?.text ??
-                  base.coachSettings.parentMessages.papa.text,
-            expiresAt:
-              typeof parsed.coachSettings?.parentMessages?.papa === "string"
-                ? null
-                : parsed.coachSettings?.parentMessages?.papa?.expiresAt ??
-                  base.coachSettings.parentMessages.papa.expiresAt,
-          },
-        },
-      },
-    };
-    ensureCategoryStructures(merged);
-    return merged;
+    return mergeParsedIntoBase(JSON.parse(raw));
   } catch {
     const fallback = structuredClone(defaultState);
     ensureCategoryStructures(fallback);
@@ -2407,9 +2575,13 @@ function loadState() {
   }
 }
 
-function saveState() {
+function saveState(options = {}) {
   ensureCategoryStructures(state);
+  state.syncRevision = Math.max(Number(state.syncRevision) || 0, Date.now());
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (!options.skipRemote) {
+    schedulePushCloudSnapshot();
+  }
 }
 
 function resetAllData() {
@@ -2419,6 +2591,7 @@ function resetAllData() {
     delete state[key];
   });
   Object.assign(state, fresh);
+  ensureCategoryStructures(state);
   session.loggedInParent = null;
   setParentPanelOpen(false);
   if (parentDialog.open) {
@@ -2426,6 +2599,7 @@ function resetAllData() {
   }
   renderLoggedInParent();
   setParentMessageStatus("Alles gewist. Je start nu volledig opnieuw.", true);
+  saveState({ skipRemote: false });
   render();
 }
 

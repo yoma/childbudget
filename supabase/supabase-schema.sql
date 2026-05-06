@@ -105,6 +105,27 @@ create trigger trg_coach_settings_touch
 before update on public.coach_settings
 for each row execute procedure public.touch_updated_at();
 
+-- 6) Full app snapshot per kind (localStorage-sync tussen devices via anon API)
+create table if not exists public.child_budget_snapshots (
+  child_id uuid primary key references public.children(id) on delete cascade,
+  family_id uuid not null references public.families(id) on delete cascade,
+  payload jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_child_budget_snapshots_family
+  on public.child_budget_snapshots(family_id);
+
+alter table public.child_budget_snapshots enable row level security;
+
+drop policy if exists child_budget_snapshots_anon_all on public.child_budget_snapshots;
+create policy child_budget_snapshots_anon_all on public.child_budget_snapshots
+for all
+using (true)
+with check (true);
+
+grant select, insert, update, delete on public.child_budget_snapshots to anon, authenticated;
+
 -- -------------------------
 -- Row Level Security (RLS)
 -- -------------------------
