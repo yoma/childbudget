@@ -43,7 +43,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-07-2000";
+const APP_BUILD_VERSION = "2026-05-07-2030";
 const urlParams = new URLSearchParams(window.location.search);
 const appConfig = window.__SUPABASE_CONFIG__ ?? {};
 const ACTIVE_FAMILY_ID = (urlParams.get("family") || appConfig.familyId || "default-family").trim();
