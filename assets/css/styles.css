@@ -1045,6 +1045,55 @@ body {
   display: none !important;
 }
 
+.kleding-sub-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.kleding-sub-pill-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #5f3f7f;
+  padding: 0.32rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #e4d8f2;
+  background: #fff;
+  cursor: pointer;
+}
+
+.kleding-sub-pill-label input {
+  margin: 0;
+}
+
+.kleding-sub-availability {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed rgba(47, 94, 162, 0.25);
+  display: grid;
+  gap: 0.28rem;
+  width: 100%;
+}
+
+.kleding-sub-availability-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.76rem;
+  color: #5a4a72;
+}
+
+.kleding-sub-overview {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
 .tx-quick-btn {
   border: 1px solid #e1d5f0;
   background: #fff;

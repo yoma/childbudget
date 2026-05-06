@@ -17,6 +17,9 @@ const defaultState = {
   },
   transactions: [],
   categories: structuredClone(defaultCategories),
+  /** Verhouding van het maand-totaal kleding (mama+papa): getallen zijn gewichten, bv. 50 / 12,5 / 27,5 */
+  kledingSubSplitEnabled: true,
+  kledingSubSplits: { basis: 50, cosmetica: 12.5, schoenen: 27.5 },
   coachSettings: {
     autoCoachEnabled: true,
     sensitivity: "normal",
@@ -36,7 +39,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-07-1000";
+const APP_BUILD_VERSION = "2026-05-07-1400";
 const urlParams = new URLSearchParams(window.location.search);
 const appConfig = window.__SUPABASE_CONFIG__ ?? {};
 const ACTIVE_FAMILY_ID = (urlParams.get("family") || appConfig.familyId || "default-family").trim();
@@ -105,6 +108,12 @@ const newCategoryNameInput = document.getElementById("newCategoryNameInput");
 const newCategoryEmojiInput = document.getElementById("newCategoryEmojiInput");
 const categoryConfigStatusEl = document.getElementById("categoryConfigStatus");
 const categoryConfigListEl = document.getElementById("categoryConfigList");
+const kledingSubSplitForm = document.getElementById("kledingSubSplitForm");
+const kledingSubSplitEnabledInput = document.getElementById("kledingSubSplitEnabled");
+const kledingSubBasisInput = document.getElementById("kledingSubBasis");
+const kledingSubCosmeticaInput = document.getElementById("kledingSubCosmetica");
+const kledingSubSchoenenInput = document.getElementById("kledingSubSchoenen");
+const kledingSubSplitStatusEl = document.getElementById("kledingSubSplitStatus");
 
 const txForm = document.getElementById("transactionForm");
 const txDateInput = document.getElementById("txDate");
@@ -115,6 +124,7 @@ const txTopupDetails = document.getElementById("txTopupDetails");
 const txAmountInput = document.getElementById("txAmount");
 const txAmountModeHint = document.getElementById("txAmountModeHint");
 const txNoteInput = document.getElementById("txNote");
+const kledingSubPickEl = document.getElementById("kledingSubPick");
 const txSubmitBtn = document.getElementById("txSubmitBtn");
 const cancelTxEditBtn = document.getElementById("cancelTxEditBtn");
 const txPresetButtons = document.querySelectorAll(".tx-preset-btn");
@@ -258,6 +268,8 @@ async function init() {
     button.addEventListener("click", handleTxPresetClick);
   });
   categoryConfigForm?.addEventListener("submit", handleCategoryConfigSubmit);
+  kledingSubSplitForm?.addEventListener("submit", handleKledingSubSplitFormSubmit);
+  txCategoryInput.addEventListener("change", updateKledingSubPickVisibility);
 
   applyInitialViewMode();
   refreshCategorySelectors();
@@ -326,6 +338,11 @@ async function init() {
       return;
     }
 
+    let kledingSub = null;
+    if (category === "kleding" && type === "expense" && kledingSubSplitActive()) {
+      kledingSub = getSelectedKledingSubFromForm();
+    }
+
     let budgetUsage = [];
     let linkedTransferIds = [];
     if (type === "expense") {
@@ -360,6 +377,11 @@ async function init() {
       existing.budgetUsage = budgetUsage;
       existing.borrowFromParent = null;
       existing.borrowAmount = 0;
+      if (category === "kleding" && kledingSub) {
+        existing.kledingSub = kledingSub;
+      } else {
+        delete existing.kledingSub;
+      }
       if (Array.isArray(existing.linkedTransferIds) && existing.linkedTransferIds.length > 0) {
         state.transactions = state.transactions.filter((item) => !existing.linkedTransferIds.includes(item.id));
       }
@@ -378,7 +400,7 @@ async function init() {
         targetCategory: category,
         usage: budgetUsage,
       });
-      state.transactions.push({
+      const newTx = {
         id: txId,
         date,
         month,
@@ -388,7 +410,11 @@ async function init() {
         createdBy: session.loggedInParent,
         budgetUsage,
         linkedTransferIds,
-      });
+      };
+      if (category === "kleding" && kledingSub) {
+        newTx.kledingSub = kledingSub;
+      }
+      state.transactions.push(newTx);
     }
     state.transactions.sort((a, b) => (a.date > b.date ? 1 : -1));
 
@@ -670,6 +696,7 @@ function render() {
       totalRemaining: sum(simulation.buckets.map((b) => b.amount)),
       buckets: simulation.buckets,
       timeline: simulation.timeline,
+      kledingSubDetails: simulation.kledingSubDetails,
     };
   });
 
@@ -690,6 +717,8 @@ function render() {
   renderBreakdown(categoryData);
   renderTransactions();
   renderChart(categoryData);
+  hydrateKledingSubSplitForm();
+  updateKledingSubPickVisibility();
 }
 
 // Parent budget configuration (auto-renew)
@@ -781,6 +810,17 @@ function renderTopAvailability(categoryData) {
   topAvailabilityBreakdownEl.innerHTML = categoryData
     .map((entry) => {
       const split = getParentRemainingSplit(entry.category, currentMonth);
+      const subRows =
+        entry.category === "kleding" && Array.isArray(entry.kledingSubDetails) && entry.kledingSubDetails.length > 0
+          ? `<div class="kleding-sub-availability">${entry.kledingSubDetails
+              .map(
+                (row) =>
+                  `<div class="kleding-sub-availability-row"><span>${escapeHtml(row.label)}</span><strong class="${
+                    row.remaining >= 0 ? "positive" : "negative"
+                  }">${currency.format(row.remaining)}</strong></div>`
+              )
+              .join("")}</div>`
+          : "";
       return `
         <div class="top-availability-pill ${entry.category}">
           <span>${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}</span>
@@ -789,6 +829,7 @@ function renderTopAvailability(categoryData) {
             <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
             <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
           </div>
+          ${subRows}
         </div>
       `;
     })
@@ -1169,11 +1210,24 @@ function renderClearOverview(categoryData) {
     .map((category) => {
       const snapshot = getCategorySnapshot(category, categoryData);
       const split = getParentRemainingSplit(category, currentMonth);
+      const entry = categoryData.find((item) => item.category === category);
+      const subBlock =
+        category === "kleding" && entry?.kledingSubDetails?.length
+          ? `<div class="kleding-sub-overview">${entry.kledingSubDetails
+              .map(
+                (row) =>
+                  `<span class="muted">${escapeHtml(row.label)}: <strong class="${
+                    row.remaining >= 0 ? "positive" : "negative"
+                  }">${currency.format(row.remaining)}</strong></span>`
+              )
+              .join(" · ")}</div>`
+          : "";
       return `
         <div class="overview-row">
           <span>
             <strong>${getCategoryEmoji(category)} ${humanCategory(category)}</strong><br/>
             Nieuw: ${currency.format(snapshot.monthBudget)} · Over: ${currency.format(snapshot.rolloverFromPrev)}
+            ${subBlock}
           </span>
           <strong class="${snapshot.availableNow >= 0 ? "positive" : "negative"}">${currency.format(snapshot.availableNow)}</strong>
           <div class="overview-split-mini">
@@ -1490,8 +1544,9 @@ function renderBreakdown(categoryData) {
       const row = document.createElement("div");
       row.className = "rollover-item";
       const monthText = bucket.sourceMonth === "manual" ? "Bijstorting" : formatMonth(bucket.sourceMonth);
+      const subSuffix = bucket.subKey ? ` · ${humanKledingSubLabel(bucket.subKey)}` : "";
       row.innerHTML = `
-        <span>${monthText}</span>
+        <span>${monthText}${subSuffix}</span>
         <strong class="${bucket.amount >= 0 ? "positive" : "negative"}">
           ${currency.format(bucket.amount)}
         </strong>
@@ -1647,6 +1702,10 @@ function buildTransactionRowsMarkup(items, includeParentName, includeActions = f
   return items
     .map((tx) => {
       const emoji = getCategoryEmoji(tx.category);
+      const kledingSubSuffix =
+        tx.category === "kleding" && tx.kledingSub
+          ? ` · ${humanKledingSubLabel(resolveKledingSubKeyFromTx(tx))}`
+          : "";
       const dateLabel = formatDate(tx.date);
       const parentName = tx.createdBy === "mama" ? "mama" : tx.createdBy === "papa" ? "papa" : "ouder";
       const usageEntries = Array.isArray(tx.budgetUsage)
@@ -1668,7 +1727,7 @@ function buildTransactionRowsMarkup(items, includeParentName, includeActions = f
         <div class="tx-item">
           <div class="tx-icon tx-icon-${tx.category}">${emoji}</div>
           <div class="tx-body">
-            <strong>${humanCategory(tx.category)}${includeParentName ? ` · ${parentName}` : ""}</strong>
+            <strong>${humanCategory(tx.category)}${kledingSubSuffix}${includeParentName ? ` · ${parentName}` : ""}</strong>
             <p class="tx-meta">${dateLabel}${tx.note ? ` · ${escapeHtml(tx.note)}` : ""}</p>
             ${usagePills ? `<div class="tx-usage-pills">${usagePills}</div>` : ""}
             ${
@@ -1715,6 +1774,13 @@ function handleParentTransactionAction(event) {
     txNoteInput.value = tx.note ?? "";
     txSubmitBtn.textContent = "Wijziging opslaan";
     cancelTxEditBtn.classList.remove("hidden");
+    const subKey = resolveKledingSubKeyFromTx(tx);
+    document.querySelectorAll('input[name="kledingSub"]').forEach((node) => {
+      if (node instanceof HTMLInputElement) {
+        node.checked = node.value === subKey;
+      }
+    });
+    updateKledingSubPickVisibility();
     txAmountInput.focus();
     return;
   }
@@ -1752,7 +1818,7 @@ function handleParentTransactionAction(event) {
         amount: -Math.abs(Number(entry.amount) || 0),
       })),
     });
-    state.transactions.push({
+    const reverseTx = {
       id: crypto.randomUUID(),
       date: reverseDate,
       month: reverseDate.slice(0, 7),
@@ -1766,7 +1832,11 @@ function handleParentTransactionAction(event) {
         amount: -Math.abs(Number(entry.amount) || 0),
       })),
       linkedTransferIds: reverseLinkedTransferIds,
-    });
+    };
+    if (tx.category === "kleding" && tx.kledingSub) {
+      reverseTx.kledingSub = tx.kledingSub;
+    }
+    state.transactions.push(reverseTx);
     state.transactions.sort((a, b) => (a.date > b.date ? 1 : -1));
     saveState();
     render();
@@ -1784,6 +1854,11 @@ function resetTransactionFormState() {
   txTopupArmed = false;
   txAmountInput.value = "";
   txNoteInput.value = "";
+  const basisRadio = document.querySelector('input[name="kledingSub"][value="basis"]');
+  if (basisRadio instanceof HTMLInputElement) {
+    basisRadio.checked = true;
+  }
+  updateKledingSubPickVisibility();
 }
 
 function handleQuickAmountClick(event) {
@@ -1818,6 +1893,7 @@ function handleTxPresetClick(event) {
     }
     txCategoryInput.value = "kleding";
     setTransactionMode("expense");
+    updateKledingSubPickVisibility();
     txAmountInput.focus();
     return;
   }
@@ -1827,6 +1903,7 @@ function handleTxPresetClick(event) {
     }
     txCategoryInput.value = "zakgeld";
     setTransactionMode("expense");
+    updateKledingSubPickVisibility();
     txAmountInput.focus();
   }
 }
@@ -1865,6 +1942,7 @@ function setTransactionMode(mode) {
   if (isTopup) {
     txTopupDetails.open = true;
   }
+  updateKledingSubPickVisibility();
 }
 
 function createLinkedCategoryTransfers({ date, month, targetCategory, usage }) {
@@ -1984,7 +2062,163 @@ function renderChart(categoryData) {
   });
 }
 
+const KLEDING_SUB_KEYS = ["basis", "cosmetica", "schoenen"];
+
+function humanKledingSubLabel(key) {
+  if (key === "cosmetica") {
+    return "Cosmetica";
+  }
+  if (key === "schoenen") {
+    return "Schoenen / jassen";
+  }
+  return "Gewone kleding";
+}
+
+function getKledingSubWeights() {
+  if (!getEnabledCategoryIds().includes("kleding")) {
+    return null;
+  }
+  if (state.kledingSubSplitEnabled === false) {
+    return null;
+  }
+  ensureKledingSplitState(state);
+  const s = state.kledingSubSplits;
+  const basis = Number(s.basis);
+  const cosmetica = Number(s.cosmetica);
+  const schoenen = Number(s.schoenen);
+  const sumW = basis + cosmetica + schoenen;
+  if (!Number.isFinite(sumW) || sumW <= 0.004) {
+    return null;
+  }
+  return { basis: basis / sumW, cosmetica: cosmetica / sumW, schoenen: schoenen / sumW };
+}
+
+function kledingSubSplitActive() {
+  return getKledingSubWeights() !== null;
+}
+
+function resolveKledingSubKeyFromTx(tx) {
+  if (tx.kledingSub === "cosmetica") {
+    return "cosmetica";
+  }
+  if (tx.kledingSub === "schoenen") {
+    return "schoenen";
+  }
+  return "basis";
+}
+
+function simulateKledingUnsplit(upToMonth) {
+  const months = getMonthRange(upToMonth);
+  const buckets = [];
+  const timeline = [];
+  months.forEach((month) => {
+    const contribution =
+      getBudgetAmountForMonth(month, "kleding", "mama") +
+      getBudgetAmountForMonth(month, "kleding", "papa");
+    if (Math.abs(contribution) > 0.004) {
+      addToBucket(buckets, month, contribution);
+    }
+    const txs = state.transactions
+      .filter((tx) => tx.month === month && tx.category === "kleding")
+      .sort((a, b) => (a.date > b.date ? 1 : -1));
+    txs.forEach((tx) => {
+      applySignedTxToBucketList(buckets, tx);
+    });
+    timeline.push({
+      month,
+      total: sum(buckets.map((bucket) => bucket.amount)),
+    });
+  });
+  return { buckets, timeline };
+}
+
+function applySignedTxToBucketList(buckets, tx) {
+  if (tx.amount >= 0) {
+    addToBucket(buckets, tx.month, tx.amount);
+  } else {
+    let toSpend = Math.abs(tx.amount);
+    const positiveBuckets = buckets
+      .filter((bucket) => bucket.amount > 0)
+      .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
+
+    positiveBuckets.forEach((bucket) => {
+      if (toSpend <= 0) {
+        return;
+      }
+      const used = Math.min(bucket.amount, toSpend);
+      bucket.amount -= used;
+      toSpend -= used;
+    });
+
+    if (toSpend > 0) {
+      addToBucket(buckets, tx.month, -toSpend);
+    }
+  }
+  pruneZeroBuckets(buckets);
+}
+
+function simulateKledingSplitCategory(upToMonth) {
+  const weights = getKledingSubWeights();
+  if (!weights) {
+    return simulateKledingUnsplit(upToMonth);
+  }
+  const months = getMonthRange(upToMonth);
+  const perSub = { basis: [], cosmetica: [], schoenen: [] };
+  const timeline = [];
+  const subKeys = KLEDING_SUB_KEYS;
+
+  months.forEach((month) => {
+    const contribution =
+      getBudgetAmountForMonth(month, "kleding", "mama") +
+      getBudgetAmountForMonth(month, "kleding", "papa");
+    if (Math.abs(contribution) > 0.004) {
+      subKeys.forEach((sk) => {
+        addToBucket(perSub[sk], month, contribution * weights[sk]);
+      });
+    }
+
+    const txs = state.transactions
+      .filter((tx) => tx.month === month && tx.category === "kleding")
+      .sort((a, b) => (a.date > b.date ? 1 : -1));
+
+    txs.forEach((tx) => {
+      if (tx.amount >= 0) {
+        subKeys.forEach((sk) => {
+          addToBucket(perSub[sk], tx.month, tx.amount * weights[sk]);
+        });
+        subKeys.forEach((sk) => pruneZeroBuckets(perSub[sk]));
+        return;
+      }
+      const sk = resolveKledingSubKeyFromTx(tx);
+      applySignedTxToBucketList(perSub[sk], tx);
+    });
+
+    timeline.push({
+      month,
+      total: sum(subKeys.map((sk) => sum(perSub[sk].map((bucket) => bucket.amount)))),
+    });
+  });
+
+  const mergedBuckets = [];
+  subKeys.forEach((sk) => {
+    perSub[sk].forEach((bucket) => {
+      mergedBuckets.push({ ...bucket, subKey: sk });
+    });
+  });
+
+  const kledingSubDetails = subKeys.map((sk) => ({
+    key: sk,
+    label: humanKledingSubLabel(sk),
+    remaining: sum(perSub[sk].map((bucket) => bucket.amount)),
+  }));
+
+  return { buckets: mergedBuckets, timeline, kledingSubDetails };
+}
+
 function simulateCategory(category, upToMonth) {
+  if (category === "kleding" && kledingSubSplitActive()) {
+    return simulateKledingSplitCategory(upToMonth);
+  }
   const months = getMonthRange(upToMonth);
   const buckets = [];
   const timeline = [];
@@ -2002,28 +2236,7 @@ function simulateCategory(category, upToMonth) {
       .sort((a, b) => (a.date > b.date ? 1 : -1));
 
     txs.forEach((tx) => {
-      if (tx.amount >= 0) {
-        addToBucket(buckets, tx.month, tx.amount);
-      } else {
-        let toSpend = Math.abs(tx.amount);
-        const positiveBuckets = buckets
-          .filter((bucket) => bucket.amount > 0)
-          .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
-
-        positiveBuckets.forEach((bucket) => {
-          if (toSpend <= 0) {
-            return;
-          }
-          const used = Math.min(bucket.amount, toSpend);
-          bucket.amount -= used;
-          toSpend -= used;
-        });
-
-        if (toSpend > 0) {
-          addToBucket(buckets, month, -toSpend);
-        }
-      }
-      pruneZeroBuckets(buckets);
+      applySignedTxToBucketList(buckets, tx);
     });
 
     timeline.push({
@@ -2378,6 +2591,86 @@ function ensureCategoryStructures(stateRef) {
       });
     });
   });
+  ensureKledingSplitState(stateRef);
+}
+
+function ensureKledingSplitState(stateRef) {
+  const d = defaultState.kledingSubSplits;
+  stateRef.kledingSubSplits ??= { ...d };
+  stateRef.kledingSubSplits.basis = Number.isFinite(Number(stateRef.kledingSubSplits.basis))
+    ? Number(stateRef.kledingSubSplits.basis)
+    : d.basis;
+  stateRef.kledingSubSplits.cosmetica = Number.isFinite(Number(stateRef.kledingSubSplits.cosmetica))
+    ? Number(stateRef.kledingSubSplits.cosmetica)
+    : d.cosmetica;
+  stateRef.kledingSubSplits.schoenen = Number.isFinite(Number(stateRef.kledingSubSplits.schoenen))
+    ? Number(stateRef.kledingSubSplits.schoenen)
+    : d.schoenen;
+  if (typeof stateRef.kledingSubSplitEnabled !== "boolean") {
+    stateRef.kledingSubSplitEnabled = defaultState.kledingSubSplitEnabled;
+  }
+}
+
+function getSelectedKledingSubFromForm() {
+  const selected = document.querySelector('input[name="kledingSub"]:checked');
+  const value = selected?.value;
+  if (value === "cosmetica" || value === "schoenen") {
+    return value;
+  }
+  return "basis";
+}
+
+function updateKledingSubPickVisibility() {
+  if (!kledingSubPickEl) {
+    return;
+  }
+  const show =
+    kledingSubSplitActive() &&
+    getEnabledCategoryIds().includes("kleding") &&
+    txCategoryInput.value === "kleding" &&
+    !txTopupArmed;
+  kledingSubPickEl.classList.toggle("hidden", !show);
+}
+
+function hydrateKledingSubSplitForm() {
+  if (!kledingSubSplitEnabledInput || !kledingSubBasisInput) {
+    return;
+  }
+  ensureKledingSplitState(state);
+  kledingSubSplitEnabledInput.checked = state.kledingSubSplitEnabled !== false;
+  kledingSubBasisInput.value = String(state.kledingSubSplits.basis);
+  kledingSubCosmeticaInput.value = String(state.kledingSubSplits.cosmetica);
+  kledingSubSchoenenInput.value = String(state.kledingSubSplits.schoenen);
+}
+
+function setKledingSubSplitStatus(message, isSuccess) {
+  if (!kledingSubSplitStatusEl) {
+    return;
+  }
+  kledingSubSplitStatusEl.textContent = message;
+  kledingSubSplitStatusEl.classList.toggle("positive", Boolean(message) && isSuccess);
+  kledingSubSplitStatusEl.classList.toggle("error", Boolean(message) && !isSuccess);
+}
+
+function handleKledingSubSplitFormSubmit(event) {
+  event.preventDefault();
+  if (!session.loggedInParent) {
+    setKledingSubSplitStatus("Log eerst in als ouder.", false);
+    return;
+  }
+  const basis = Number(kledingSubBasisInput.value);
+  const cosmetica = Number(kledingSubCosmeticaInput.value);
+  const schoenen = Number(kledingSubSchoenenInput.value);
+  if (![basis, cosmetica, schoenen].every((n) => Number.isFinite(n) && n >= 0) || basis + cosmetica + schoenen <= 0.004) {
+    setKledingSubSplitStatus("Vul drie geldige gewichten in (som groter dan 0).", false);
+    return;
+  }
+  state.kledingSubSplitEnabled = kledingSubSplitEnabledInput.checked;
+  state.kledingSubSplits = { basis, cosmetica, schoenen };
+  ensureKledingSplitState(state);
+  saveState();
+  setKledingSubSplitStatus("Opgeslagen. Uitgaven kies je voortaan per deel.", true);
+  render();
 }
 
 // State persistence and migrations
@@ -2440,6 +2733,21 @@ function mergeParsedIntoBase(parsed) {
                 base.coachSettings.parentMessages.papa.expiresAt,
         },
       },
+    },
+    kledingSubSplitEnabled:
+      typeof parsed.kledingSubSplitEnabled === "boolean"
+        ? parsed.kledingSubSplitEnabled
+        : base.kledingSubSplitEnabled,
+    kledingSubSplits: {
+      basis: Number.isFinite(Number(parsed.kledingSubSplits?.basis))
+        ? Number(parsed.kledingSubSplits.basis)
+        : base.kledingSubSplits.basis,
+      cosmetica: Number.isFinite(Number(parsed.kledingSubSplits?.cosmetica))
+        ? Number(parsed.kledingSubSplits.cosmetica)
+        : base.kledingSubSplits.cosmetica,
+      schoenen: Number.isFinite(Number(parsed.kledingSubSplits?.schoenen))
+        ? Number(parsed.kledingSubSplits.schoenen)
+        : base.kledingSubSplits.schoenen,
     },
   };
   ensureCategoryStructures(merged);
