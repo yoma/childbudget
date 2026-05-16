@@ -1996,3 +1996,13 @@ body.parent-mode-active .parent-panel {
 canvas {
   background: transparent;
 }
+
+body.app-mode-solo #parentDashboardSection,
+body.app-mode-solo .overview-split-mini,
+body.app-mode-solo .top-availability-split {
+  display: none !important;
+}
+
+body.app-mode-solo .balance-inline-overview .tag {
+  letter-spacing: 0.02em;
+}

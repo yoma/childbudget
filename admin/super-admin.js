@@ -2,7 +2,7 @@ const cfg = window.__SUPABASE_CONFIG__ ?? {};
 const supabaseClient = window.supabase?.createClient?.(cfg.url, cfg.anonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
-const ADMIN_BUILD_VERSION = "2026-04-28-1623";
+const ADMIN_BUILD_VERSION = "2026-05-08-1400";
 
 const adminWorkspaceEl = document.getElementById("adminWorkspace");
 const adminLoginForm = document.getElementById("adminLoginForm");
@@ -15,6 +15,7 @@ const createFamilyForm = document.getElementById("createFamilyForm");
 const familyNameInput = document.getElementById("familyNameInput");
 const childNameInput = document.getElementById("childNameInput");
 const childSlugInput = document.getElementById("childSlugInput");
+const createFamilyAppModeInput = document.getElementById("createFamilyAppModeInput");
 const createFamilyStatusEl = document.getElementById("createFamilyStatus");
 const createFamilyLinkEl = document.getElementById("createFamilyLink");
 
@@ -22,7 +23,9 @@ const createChildForm = document.getElementById("createChildForm");
 const existingFamilyIdInput = document.getElementById("existingFamilyIdInput");
 const newChildNameInput = document.getElementById("newChildNameInput");
 const newChildSlugInput = document.getElementById("newChildSlugInput");
+const createChildAppModeInput = document.getElementById("createChildAppModeInput");
 const createChildStatusEl = document.getElementById("createChildStatus");
+const createChildLinkEl = document.getElementById("createChildLink");
 
 const createUserForm = document.getElementById("createUserForm");
 const profileFamilyIdInput = document.getElementById("profileFamilyIdInput");
@@ -198,8 +201,9 @@ async function handleCreateFamilyWithChild(event) {
   profileFamilyIdInput.value = familyId;
   setStatus(createFamilyStatusEl, `Opgeslagen. Family + kind aangemaakt. family_id=${familyId} · child_id=${childData.id}`, "success");
   if (createFamilyLinkEl) {
-    const appUrl = buildChildAppUrl(familyId, childData.id, childSlug, childName);
-    createFamilyLinkEl.innerHTML = `Open app-link: <a href="${appUrl}" target="_blank" rel="noopener">${appUrl}</a>`;
+    const appMode = readAppModeFromSelect(createFamilyAppModeInput);
+    const appUrl = buildChildAppUrl(familyId, childData.id, childSlug, childName, appMode);
+    createFamilyLinkEl.innerHTML = formatAppLinkHtml(appUrl, appMode);
   }
   await refreshOverview();
 }
@@ -207,16 +211,35 @@ async function handleCreateFamilyWithChild(event) {
 async function handleCreateChild(event) {
   event.preventDefault();
   setStatus(createChildStatusEl, "Kind toevoegen...", "neutral");
-  const { error } = await supabaseClient.from("children").insert({
-    family_id: existingFamilyIdInput.value.trim(),
-    slug: newChildSlugInput.value.trim().toLowerCase(),
-    display_name: newChildNameInput.value.trim(),
-  });
+  if (createChildLinkEl) {
+    createChildLinkEl.textContent = "";
+  }
+  const familyId = existingFamilyIdInput.value.trim();
+  const childName = newChildNameInput.value.trim();
+  const childSlug = newChildSlugInput.value.trim().toLowerCase();
+  const { data: childData, error } = await supabaseClient
+    .from("children")
+    .insert({
+      family_id: familyId,
+      slug: childSlug,
+      display_name: childName,
+    })
+    .select("id")
+    .single();
   if (error) {
     setStatus(createChildStatusEl, `Kind toevoegen mislukt: ${error.message}`, "error");
     return;
   }
-  setStatus(createChildStatusEl, "Opgeslagen. Kind toegevoegd.", "success");
+  const appMode = readAppModeFromSelect(createChildAppModeInput);
+  setStatus(
+    createChildStatusEl,
+    `Opgeslagen. child_id=${childData.id} · modus=${appMode}`,
+    "success"
+  );
+  if (createChildLinkEl) {
+    const appUrl = buildChildAppUrl(familyId, childData.id, childSlug, childName, appMode);
+    createChildLinkEl.innerHTML = formatAppLinkHtml(appUrl, appMode);
+  }
   await refreshOverview();
 }
 
@@ -291,8 +314,9 @@ async function refreshOverview() {
             kinderen: ${
               children
                 .map((c) => {
-                  const childUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name);
-                  return `${escapeHtml(c.display_name)} (${escapeHtml(c.slug)}) - <a href="${childUrl}" target="_blank" rel="noopener">open link</a>`;
+                  const familyUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name, "family");
+                  const soloUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name, "solo");
+                  return `${escapeHtml(c.display_name)} (${escapeHtml(c.slug)}) — <a href="${familyUrl}" target="_blank" rel="noopener">family</a> · <a href="${soloUrl}" target="_blank" rel="noopener">solo</a>`;
                 })
                 .join(", ") || "geen"
             }<br/>
@@ -345,7 +369,17 @@ function networkErrorMessage(error) {
   return `Inloggen mislukt: geen verbinding met Supabase (Failed to fetch). ${onlineHint}`;
 }
 
-function buildChildAppUrl(familyId, childId, childSlug, childName) {
+function readAppModeFromSelect(selectEl) {
+  const value = (selectEl?.value || "family").trim().toLowerCase();
+  return value === "solo" ? "solo" : "family";
+}
+
+function formatAppLinkHtml(appUrl, appMode) {
+  const label = appMode === "solo" ? "Solo-app link" : "Family-app link";
+  return `${label}: <a href="${appUrl}" target="_blank" rel="noopener">${appUrl}</a>`;
+}
+
+function buildChildAppUrl(familyId, childId, childSlug, childName, appMode = "family") {
   const basePath = window.location.pathname.replace(/\/admin\/super-admin\.html$/i, "");
   const origin = window.location.origin;
   const params = new URLSearchParams({
@@ -358,5 +392,12 @@ function buildChildAppUrl(familyId, childId, childSlug, childName) {
   if (childName) {
     params.set("childName", childName);
   }
+  if (appMode === "solo") {
+    params.set("mode", "solo");
+  }
   return `${origin}${basePath}/index.html?${params.toString()}`;
+}
+
+if (cfg.familyId && existingFamilyIdInput && !existingFamilyIdInput.value) {
+  existingFamilyIdInput.value = cfg.familyId;
 }

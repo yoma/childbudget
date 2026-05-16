@@ -1,4 +1,3 @@
-const PARENTS = ["mama", "papa"];
 const defaultCategories = [
   { id: "zakgeld", label: "Zakgeld", emoji: "💜", enabled: true, color: "#8d45cc" },
   { id: "kleding", label: "Kledingsbudget", emoji: "👗", enabled: true, color: "#2f5ea2" },
@@ -6,35 +5,76 @@ const defaultCategories = [
 
 const CATEGORY_COLOR_FALLBACK_PALETTE = ["#4a9ca8", "#b86893", "#6f8e3a", "#ad7d44", "#5c6bc0", "#c2185b"];
 
-const defaultState = {
-  pins: { mama: "1111", papa: "2222" },
-  monthlyBudgets: {},
-  recurringBudgets: {
-    mama: { zakgeld: 0, kleding: 0 },
-    papa: { zakgeld: 0, kleding: 0 },
-  },
-  recurringStartMonth: {
-    mama: { zakgeld: null, kleding: null },
-    papa: { zakgeld: null, kleding: null },
-  },
-  /** Per ouder+categorie: 1 = elke maand, 2–12 = om de N maanden vanaf startmaand */
-  recurringIntervalMonths: {
-    mama: { zakgeld: 1, kleding: 1 },
-    papa: { zakgeld: 1, kleding: 1 },
-  },
-  transactions: [],
-  categories: structuredClone(defaultCategories),
-  coachSettings: {
-    autoCoachEnabled: true,
-    sensitivity: "normal",
-    parentMessages: {
-      mama: { text: "", expiresAt: null },
-      papa: { text: "", expiresAt: null },
+const urlParams = new URLSearchParams(window.location.search);
+const appConfig = window.__SUPABASE_CONFIG__ ?? {};
+const IS_SOLO_MODE = (urlParams.get("mode") || "").trim().toLowerCase() === "solo";
+const SOLO_OWNER = "self";
+const PARENTS = IS_SOLO_MODE ? [SOLO_OWNER] : ["mama", "papa"];
+
+function createEmptyOwnerAmounts() {
+  return Object.fromEntries(PARENTS.map((owner) => [owner, 0]));
+}
+
+function createDefaultState() {
+  const categorySeed = structuredClone(defaultCategories);
+  const emptyRecurring = Object.fromEntries(
+    defaultCategories.map((c) => [c.id, IS_SOLO_MODE ? 0 : 0])
+  );
+  const emptyStarts = Object.fromEntries(defaultCategories.map((c) => [c.id, null]));
+  const emptyIntervals = Object.fromEntries(defaultCategories.map((c) => [c.id, 1]));
+
+  if (IS_SOLO_MODE) {
+    return {
+      pins: { [SOLO_OWNER]: "1111" },
+      monthlyBudgets: {},
+      recurringBudgets: { [SOLO_OWNER]: { ...emptyRecurring } },
+      recurringStartMonth: { [SOLO_OWNER]: { ...emptyStarts } },
+      recurringIntervalMonths: { [SOLO_OWNER]: { ...emptyIntervals } },
+      transactions: [],
+      categories: categorySeed,
+      coachSettings: {
+        autoCoachEnabled: true,
+        sensitivity: "normal",
+        parentMessages: {
+          [SOLO_OWNER]: { text: "", expiresAt: null },
+        },
+      },
+      appMode: "solo",
+      syncRevision: 0,
+    };
+  }
+
+  return {
+    appMode: "family",
+    pins: { mama: "1111", papa: "2222" },
+    monthlyBudgets: {},
+    recurringBudgets: {
+      mama: { zakgeld: 0, kleding: 0 },
+      papa: { zakgeld: 0, kleding: 0 },
     },
-  },
-  /** Op elke wijziging verhoogd; gebruikt om nieuwste versie tussen toestellen te kiezen */
-  syncRevision: 0,
-};
+    recurringStartMonth: {
+      mama: { zakgeld: null, kleding: null },
+      papa: { zakgeld: null, kleding: null },
+    },
+    recurringIntervalMonths: {
+      mama: { zakgeld: 1, kleding: 1 },
+      papa: { zakgeld: 1, kleding: 1 },
+    },
+    transactions: [],
+    categories: categorySeed,
+    coachSettings: {
+      autoCoachEnabled: true,
+      sensitivity: "normal",
+      parentMessages: {
+        mama: { text: "", expiresAt: null },
+        papa: { text: "", expiresAt: null },
+      },
+    },
+    syncRevision: 0,
+  };
+}
+
+const defaultState = createDefaultState();
 
 const currency = new Intl.NumberFormat("nl-BE", {
   style: "currency",
@@ -43,23 +83,321 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-07-2030";
-const urlParams = new URLSearchParams(window.location.search);
-const appConfig = window.__SUPABASE_CONFIG__ ?? {};
+const APP_BUILD_VERSION = "2026-05-08-1300";
+const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
+const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
+const childIdFromUrl = (urlParams.get("child") || "").trim();
+// Solo gebruikt nooit de family-default (Lena) uit config — alleen ?child= of soloChildId.
+const ACTIVE_CHILD_ID =
+  childIdFromUrl ||
+  (IS_SOLO_MODE ? String(appConfig.soloChildId ?? "").trim() : CONFIGURED_LENA_CHILD_ID) ||
+  "default-child";
 const ACTIVE_FAMILY_ID = (urlParams.get("family") || appConfig.familyId || "default-family").trim();
-const ACTIVE_CHILD_ID = (urlParams.get("child") || appConfig.childId || "default-child").trim();
 const CHILD_NAME = (urlParams.get("childName") || appConfig.childName || "Lena").trim();
 const defaultAppName = `${CHILD_NAME.toLowerCase().replace(/\s+/g, "-")}_budget`;
 const APP_NAME = (urlParams.get("appName") || appConfig.appName || defaultAppName).trim();
-const STORAGE_KEY = `child-budget-v1:${ACTIVE_FAMILY_ID}:${ACTIVE_CHILD_ID}`;
+const STORAGE_KEY = `child-budget-v1:${ACTIVE_FAMILY_ID}:${ACTIVE_CHILD_ID}:${APP_MODE}`;
+const LEGACY_STORAGE_KEY = `child-budget-v1:${ACTIVE_FAMILY_ID}:${ACTIVE_CHILD_ID}`;
+const CLOUD_SYNC_BLOCKED = detectCloudSyncCrossAppRisk();
 window.__ACTIVE_APP_CONTEXT__ = {
   familyId: ACTIVE_FAMILY_ID,
   childId: ACTIVE_CHILD_ID,
+  mode: APP_MODE,
+  storageKey: STORAGE_KEY,
 };
 
 function looksLikeUuid(value) {
   const s = String(value ?? "").trim();
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
+
+function detectCloudSyncCrossAppRisk() {
+  if (!looksLikeUuid(ACTIVE_CHILD_ID) || !looksLikeUuid(CONFIGURED_LENA_CHILD_ID)) {
+    return false;
+  }
+  if (!IS_SOLO_MODE) {
+    return false;
+  }
+  // Solo op dezelfde child_id als Lena = gegarandeerd rommel in de cloud.
+  return ACTIVE_CHILD_ID === CONFIGURED_LENA_CHILD_ID;
+}
+
+function inferPayloadAppMode(payload) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  if (payload.appMode === "solo" || payload.appMode === "family") {
+    return payload.appMode;
+  }
+  const pins = payload.pins;
+  if (pins?.self && !pins?.mama && !pins?.papa) {
+    return "solo";
+  }
+  if (pins?.mama || pins?.papa) {
+    return "family";
+  }
+  return null;
+}
+
+function payloadCompatibleWithCurrentApp(payload) {
+  const inferred = inferPayloadAppMode(payload);
+  if (inferred === null || inferred === APP_MODE) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    reason:
+      inferred === "family"
+        ? "Cloud-data is voor mama/papa (family), niet voor solo — andere child-link gebruiken."
+        : "Cloud-data is voor solo, niet voor deze family-link.",
+  };
+}
+
+function stampAppModeOnState(stateRef) {
+  stateRef.appMode = APP_MODE;
+}
+
+function normalizeOwnerKey(raw) {
+  if (IS_SOLO_MODE) {
+    return SOLO_OWNER;
+  }
+  return raw === "papa" ? "papa" : "mama";
+}
+
+function getSessionOwner() {
+  return session.loggedInParent ? normalizeOwnerKey(session.loggedInParent) : null;
+}
+
+function ownerDisplayLabel(owner) {
+  if (IS_SOLO_MODE) {
+    return CHILD_NAME;
+  }
+  return owner === "mama" ? "Mama" : "Papa";
+}
+
+function sumCategoryBudgetForMonth(month, category) {
+  return PARENTS.reduce((acc, owner) => acc + getBudgetAmountForMonth(month, category, owner), 0);
+}
+
+function sumOwnerSplit(split) {
+  return PARENTS.reduce((acc, owner) => acc + (split[owner] ?? 0), 0);
+}
+
+function renderOwnerSplitHtml(split, className = "overview-split-mini") {
+  if (IS_SOLO_MODE) {
+    return "";
+  }
+  return `<div class="${className}"><span class="parent-mini-pill mama">mama ${currency.format(split.mama ?? 0)}</span><span class="parent-mini-pill papa">papa ${currency.format(split.papa ?? 0)}</span></div>`;
+}
+
+function normalizeStateForSolo(stateRef) {
+  if (!IS_SOLO_MODE) {
+    return;
+  }
+
+  stateRef.pins ??= {};
+  if (!stateRef.pins[SOLO_OWNER]) {
+    stateRef.pins[SOLO_OWNER] = stateRef.pins.mama || stateRef.pins.papa || "1111";
+  }
+  delete stateRef.pins.mama;
+  delete stateRef.pins.papa;
+
+  const categoryIds = (stateRef.categories ?? []).map((c) => c.id);
+
+  const mergeNumericMaps = (key, combine) => {
+    stateRef[key] ??= {};
+    const mamaMap = stateRef[key].mama ?? {};
+    const papaMap = stateRef[key].papa ?? {};
+    const selfMap = stateRef[key][SOLO_OWNER] ?? {};
+    stateRef[key][SOLO_OWNER] = {};
+    categoryIds.forEach((cat) => {
+      const mamaVal = Number(mamaMap[cat]) || 0;
+      const papaVal = Number(papaMap[cat]) || 0;
+      const selfVal = Number(selfMap[cat]) || 0;
+      if (combine === "sum") {
+        stateRef[key][SOLO_OWNER][cat] = mamaVal + papaVal + selfVal;
+      } else if (combine === "max") {
+        stateRef[key][SOLO_OWNER][cat] = Math.max(mamaVal, papaVal, selfVal);
+      } else if (combine === "firstMonth") {
+        stateRef[key][SOLO_OWNER][cat] =
+          selfMap[cat] || mamaMap[cat] || papaMap[cat] || null;
+      } else if (combine === "interval") {
+        stateRef[key][SOLO_OWNER][cat] = clampRecurringIntervalMonths(
+          selfMap[cat] ?? mamaMap[cat] ?? papaMap[cat] ?? 1
+        );
+      }
+    });
+    delete stateRef[key].mama;
+    delete stateRef[key].papa;
+  };
+
+  mergeNumericMaps("recurringBudgets", "max");
+  mergeNumericMaps("recurringStartMonth", "firstMonth");
+  mergeNumericMaps("recurringIntervalMonths", "interval");
+
+  Object.keys(stateRef.monthlyBudgets ?? {}).forEach((month) => {
+    const monthEntry = stateRef.monthlyBudgets[month];
+    if (!monthEntry || typeof monthEntry !== "object") {
+      return;
+    }
+    categoryIds.forEach((cat) => {
+      const cell = monthEntry[cat];
+      if (!cell || typeof cell !== "object") {
+        monthEntry[cat] = createEmptyOwnerAmounts();
+        return;
+      }
+      const total =
+        (Number(cell.mama) || 0) + (Number(cell.papa) || 0) + (Number(cell[SOLO_OWNER]) || 0);
+      monthEntry[cat] = { [SOLO_OWNER]: total };
+    });
+  });
+
+  stateRef.coachSettings ??= {};
+  stateRef.coachSettings.parentMessages ??= {};
+  const messages = stateRef.coachSettings.parentMessages;
+  if (!messages[SOLO_OWNER]?.text) {
+    messages[SOLO_OWNER] = messages.mama?.text
+      ? { ...messages.mama }
+      : messages.papa?.text
+        ? { ...messages.papa }
+        : messages[SOLO_OWNER] ?? { text: "", expiresAt: null };
+  }
+  delete messages.mama;
+  delete messages.papa;
+
+  (stateRef.transactions ?? []).forEach((tx) => {
+    if (tx.createdBy === "mama" || tx.createdBy === "papa") {
+      tx.createdBy = SOLO_OWNER;
+    }
+    if (Array.isArray(tx.budgetUsage)) {
+      tx.budgetUsage.forEach((entry) => {
+        if (entry.fromParent === "mama" || entry.fromParent === "papa") {
+          entry.fromParent = SOLO_OWNER;
+        }
+      });
+    }
+    if (tx.borrowFromParent === "mama" || tx.borrowFromParent === "papa") {
+      tx.borrowFromParent = SOLO_OWNER;
+    }
+  });
+}
+
+function applySoloModeDom() {
+  if (!IS_SOLO_MODE) {
+    return;
+  }
+  document.body.classList.add("app-mode-solo");
+
+  const pinTitle = pinForm?.querySelector("h3");
+  const pinHelp = pinForm?.querySelector("p.muted");
+  if (pinTitle) {
+    pinTitle.textContent = "Beheer";
+  }
+  if (pinHelp) {
+    pinHelp.textContent = "Voer je PIN in om budget en transacties te beheren.";
+  }
+  loginParentInput?.closest("label")?.classList.add("hidden");
+  loginParentInput?.removeAttribute("required");
+
+  if (parentModeBtn) {
+    parentModeBtn.setAttribute("aria-label", "Beheer");
+    parentModeBtn.setAttribute("title", "Beheer");
+  }
+
+  const panelTitle = parentPanel?.querySelector(".panel-header h2");
+  if (panelTitle) {
+    panelTitle.textContent = `${CHILD_NAME} — beheer`;
+  }
+
+  const overviewTag = document.querySelector(".balance-inline-overview .tag");
+  if (overviewTag) {
+    overviewTag.textContent = "Jouw budget";
+  }
+
+  const dashTitle = document.querySelector("#parentDashboardSection .card-header h3");
+  if (dashTitle) {
+    dashTitle.textContent = "Overzicht (deze maand)";
+  }
+
+  const budgetHelp = document.querySelector("#adminBudgetSection > p.muted");
+  if (budgetHelp) {
+    budgetHelp.textContent = "Wordt opgeslagen op jouw persoonlijke budget.";
+  }
+
+  const catHelp = document.querySelector("#adminCategorySection > p.muted");
+  if (catHelp) {
+    catHelp.textContent =
+      "Categorieën gelden voor jouw hele app. Voeg toe, pas kleur aan of schakel uit.";
+  }
+
+  if (parentMessageLabelEl) {
+    parentMessageLabelEl.textContent = "Persoonlijke herinnering (verschijnt bovenaan)";
+  }
+
+  document.getElementById("parentDashboardSection")?.classList.add("hidden");
+  parentTxFilterParentInput?.closest("label")?.classList.add("hidden");
+}
+
+async function resolveSoloBudgetUsageDecision({
+  category,
+  month,
+  requestedAmount,
+  excludeTxId,
+  excludeLinkedTransferIds = [],
+}) {
+  const excludeTxIds = [excludeTxId, ...excludeLinkedTransferIds].filter(Boolean);
+  const usage = [];
+  let remaining = requestedAmount;
+  const ownSplit = getParentRemainingSplit(category, month, { excludeTxIds });
+  const ownAvailable = Math.max(0, ownSplit[SOLO_OWNER] ?? 0);
+  remaining = Math.max(0, remaining - ownAvailable);
+
+  while (remaining > 0.004) {
+    const otherCategories = getEnabledCategoryIds().filter((item) => item !== category);
+    const options = otherCategories
+      .map((fromCategory) => {
+        const split = getParentRemainingSplit(fromCategory, month, { excludeTxIds });
+        const baseAvailable = Math.max(0, split[SOLO_OWNER] ?? 0);
+        const alreadyUsed = usage
+          .filter((entry) => entry.fromCategory === fromCategory)
+          .reduce((acc, entry) => acc + entry.amount, 0);
+        const available = Math.max(0, baseAvailable - alreadyUsed);
+        return {
+          fromParent: SOLO_OWNER,
+          fromCategory,
+          available,
+          selectable: available > 0.004,
+        };
+      })
+      .filter((entry) => entry.selectable);
+
+    if (options.length === 0) {
+      break;
+    }
+
+    const selected = await chooseBudgetSourceOption({
+      actingParent: SOLO_OWNER,
+      category,
+      remaining,
+      options,
+    });
+    if (!selected) {
+      const totalPossible = options.reduce((acc, option) => acc + option.available, 0);
+      if (totalPossible >= remaining) {
+        return { usage: [], cancelledByUser: true };
+      }
+      break;
+    }
+    const amount = Math.min(remaining, selected.available);
+    usage.push({
+      fromParent: SOLO_OWNER,
+      fromCategory: selected.fromCategory,
+      amount,
+    });
+    remaining -= amount;
+  }
+
+  return { usage, cancelledByUser: false };
 }
 
 const state = loadState();
@@ -179,9 +517,11 @@ void init();
 
 // App bootstrap and top-level UI state
 async function init() {
-  cloudSyncState.syncEligible = looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID);
+  cloudSyncState.syncEligible =
+    looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID) && !CLOUD_SYNC_BLOCKED;
   ensureCategoryStructures(state);
   applyBranding();
+  applySoloModeDom();
   monthLabelEl.textContent = formatMonth(currentMonth);
   budgetMonthInput.value = currentMonth;
   txDateInput.value = new Date().toISOString().slice(0, 10);
@@ -197,7 +537,9 @@ async function init() {
   cancelPinBtn.addEventListener("click", () => {
     pinError.textContent = "";
     pinInput.value = "";
-    loginParentInput.value = "mama";
+    if (!IS_SOLO_MODE && loginParentInput) {
+      loginParentInput.value = "mama";
+    }
     parentDialog.close();
   });
   closeParentPanelBtn.addEventListener("click", () => setParentPanelOpen(false));
@@ -224,7 +566,10 @@ async function init() {
     setChangePinMessage("", true);
   });
   resetAllDataBtn.addEventListener("click", () => {
-    if (session.loggedInParent !== "papa") {
+    const canReset = IS_SOLO_MODE
+      ? session.loggedInParent === SOLO_OWNER
+      : session.loggedInParent === "papa";
+    if (!canReset) {
       return;
     }
     const firstConfirm = window.confirm(
@@ -276,7 +621,7 @@ async function init() {
 
   pinForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const selectedParent = loginParentInput.value;
+    const selectedParent = IS_SOLO_MODE ? SOLO_OWNER : loginParentInput.value;
     const selectedPin = state.pins?.[selectedParent];
 
     if (pinInput.value === selectedPin) {
@@ -308,7 +653,7 @@ async function init() {
 
     state.monthlyBudgets[month] ??= {};
     ensureCategoryStructures(state);
-    state.monthlyBudgets[month][category] ??= { mama: 0, papa: 0 };
+    state.monthlyBudgets[month][category] ??= createEmptyOwnerAmounts();
     state.monthlyBudgets[month][category][parent] = amount;
     if (budgetAutoRenewInput.checked) {
       state.recurringBudgets[parent][category] = amount;
@@ -416,7 +761,7 @@ async function init() {
   changePinForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!session.loggedInParent) {
-      setChangePinMessage("Log eerst in als ouder.", false);
+      setChangePinMessage(IS_SOLO_MODE ? "Log eerst in via Beheer (slotje)." : "Log eerst in als ouder.", false);
       return;
     }
 
@@ -449,7 +794,7 @@ async function init() {
   parentMessageForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!session.loggedInParent) {
-      setParentMessageStatus("Log eerst in als ouder.", false);
+      setParentMessageStatus(IS_SOLO_MODE ? "Log eerst in via Beheer (slotje)." : "Log eerst in als ouder.", false);
       return;
     }
     const days = Number(parentMessageDaysInput.value);
@@ -544,7 +889,13 @@ function applyBranding() {
   if (heroGreetingEl) {
     heroGreetingEl.innerHTML = `Hey ${escapeHtml(CHILD_NAME)} <span class="wave">✨</span>`;
   }
-  if (parentMessageLabelEl) {
+  const heroSub = document.querySelector(".hero-sub");
+  if (heroSub) {
+    heroSub.textContent = IS_SOLO_MODE
+      ? "Jouw budget, in één oogopslag."
+      : "Jouw budget in 1 oogopslag.";
+  }
+  if (parentMessageLabelEl && !IS_SOLO_MODE) {
     parentMessageLabelEl.textContent = `Jouw boodschap voor ${CHILD_NAME}`;
   }
 }
@@ -601,10 +952,21 @@ function renderCloudSyncStatus() {
     return;
   }
   if (!cloudSyncState.syncEligible) {
-    cloudSyncStatusEl.textContent =
-      "Cloud sync: verbonden — gebruik family + kind UUID in de link of config om tussen toestellen te synchroniseren.";
-    cloudSyncStatusEl.classList.remove("error");
-    cloudSyncStatusEl.classList.add("positive");
+    if (CLOUD_SYNC_BLOCKED) {
+      cloudSyncStatusEl.textContent =
+        "Cloud sync geblokkeerd: solo mag niet dezelfde kind-ID als Lena — gebruik een aparte child-UUID in de link.";
+      cloudSyncStatusEl.classList.remove("positive");
+      cloudSyncStatusEl.classList.add("error");
+    } else if (cloudSyncState.lastSyncError) {
+      cloudSyncStatusEl.textContent = `Cloud sync: ${cloudSyncState.lastSyncError}`;
+      cloudSyncStatusEl.classList.remove("positive");
+      cloudSyncStatusEl.classList.add("error");
+    } else {
+      cloudSyncStatusEl.textContent =
+        "Cloud sync: verbonden — gebruik family + kind UUID in de link of config om tussen toestellen te synchroniseren.";
+      cloudSyncStatusEl.classList.remove("error");
+      cloudSyncStatusEl.classList.add("positive");
+    }
     renderBuildMeta();
     return;
   }
@@ -660,9 +1022,14 @@ function renderLoggedInParent() {
     resetAllDataBtn.classList.add("hidden");
     return;
   }
-  const name = session.loggedInParent === "mama" ? "Mama" : "Papa";
-  loggedInAsEl.textContent = `Aangemeld als: ${name}`;
-  resetAllDataBtn.classList.toggle("hidden", session.loggedInParent !== "papa");
+  if (IS_SOLO_MODE) {
+    loggedInAsEl.textContent = `Beheer voor ${CHILD_NAME}`;
+    resetAllDataBtn.classList.remove("hidden");
+  } else {
+    const name = session.loggedInParent === "mama" ? "Mama" : "Papa";
+    loggedInAsEl.textContent = `Aangemeld als: ${name}`;
+    resetAllDataBtn.classList.toggle("hidden", session.loggedInParent !== "papa");
+  }
   setChangePinMessage("", true);
   hydrateParentCoachForm();
   setParentMessageStatus("", true);
@@ -828,7 +1195,7 @@ function handleAutoRenewActionClick(event) {
     syncBudgetRecurringIntervalVisibility();
     budgetAmountInput.focus();
     setParentMessageStatus(
-      `Klaar om auto-bedrag voor ${parent === "mama" ? "mama" : "papa"} · ${humanCategory(category).toLowerCase()} te wijzigen.`,
+      `Klaar om auto-bedrag voor ${ownerDisplayLabel(parent).toLowerCase()} · ${humanCategory(category).toLowerCase()} te wijzigen.`,
       true
     );
   }
@@ -845,10 +1212,7 @@ function renderTopAvailability(categoryData) {
             <span class="top-availability-pill-title">${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}</span>
             <strong class="top-availability-pill-total ${entry.totalRemaining >= 0 ? "positive" : "negative"}">${currency.format(entry.totalRemaining)}</strong>
           </div>
-          <div class="top-availability-split">
-            <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
-            <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
-          </div>
+          ${renderOwnerSplitHtml(split, "top-availability-split")}
         </div>
       `;
     })
@@ -970,9 +1334,7 @@ function buildAutomaticCoachAlerts() {
 }
 
 function getCurrentMonthUsage(category) {
-  const monthBudget =
-    getBudgetAmountForMonth(currentMonth, category, "mama") +
-    getBudgetAmountForMonth(currentMonth, category, "papa");
+  const monthBudget = sumCategoryBudgetForMonth(currentMonth, category);
 
   const monthTx = state.transactions.filter((tx) => tx.month === currentMonth && tx.category === category);
   const expenses = monthTx.filter((tx) => tx.amount < 0).reduce((sumValue, tx) => sumValue + Math.abs(tx.amount), 0);
@@ -1107,6 +1469,17 @@ function createCoachMessage(category, severity, ratio, remaining, dayOfMonth) {
 function buildParentMessageAlerts() {
   const messages = state.coachSettings.parentMessages ?? {};
   const alerts = [];
+  if (IS_SOLO_MODE) {
+    if (messages[SOLO_OWNER]?.text) {
+      alerts.push({
+        toneClass: "coach-soft",
+        title: "💌 Herinnering",
+        text: escapeHtml(messages[SOLO_OWNER].text),
+        showCoachTag: false,
+      });
+    }
+    return alerts;
+  }
   if (messages.mama?.text) {
     alerts.push({
       toneClass: "coach-soft",
@@ -1152,6 +1525,18 @@ function renderParentCoachSummary() {
   const sensitivity = state.coachSettings.sensitivity ?? "normal";
   const sensitivityText = sensitivity === "calm" ? "Rustig" : sensitivity === "strict" ? "Streng" : "Normaal";
   const parentMessages = state.coachSettings.parentMessages ?? {};
+
+  if (IS_SOLO_MODE) {
+    const selfUntil = formatMessageExpiry(parentMessages[SOLO_OWNER]?.expiresAt);
+    parentCoachSummaryEl.innerHTML = `
+      ${categoryRows}
+      <div class="coach-summary-row">🔔 Automatische coach: ${autoCoachText}</div>
+      <div class="coach-summary-row">🎚️ Gevoeligheid: ${sensitivityText}</div>
+      <div class="coach-summary-row">💌 Persoonlijke herinnering: ${selfUntil}</div>
+    `;
+    return;
+  }
+
   const mamaUntil = formatMessageExpiry(parentMessages.mama?.expiresAt);
   const papaUntil = formatMessageExpiry(parentMessages.papa?.expiresAt);
 
@@ -1194,7 +1579,7 @@ function getStableIndex(seed, length) {
 function pruneExpiredParentMessages() {
   const nowMs = Date.now();
   let changed = false;
-  ["mama", "papa"].forEach((parent) => {
+  PARENTS.forEach((parent) => {
     const entry = state.coachSettings.parentMessages?.[parent];
     if (!entry?.text || !entry?.expiresAt) {
       return;
@@ -1237,10 +1622,7 @@ function renderClearOverview(categoryData) {
           </div>
           <div class="overview-row-aside">
             <strong class="overview-total-amount ${snapshot.availableNow >= 0 ? "positive" : "negative"}">${currency.format(snapshot.availableNow)}</strong>
-            <div class="overview-split-mini">
-              <span class="parent-mini-pill mama">mama ${currency.format(split.mama)}</span>
-              <span class="parent-mini-pill papa">papa ${currency.format(split.papa)}</span>
-            </div>
+            ${renderOwnerSplitHtml(split, "overview-split-mini")}
           </div>
         </div>
       `;
@@ -1249,9 +1631,7 @@ function renderClearOverview(categoryData) {
 }
 
 function getCategorySnapshot(category, categoryData) {
-  const monthBudget =
-    getBudgetAmountForMonth(currentMonth, category, "mama") +
-    getBudgetAmountForMonth(currentMonth, category, "papa");
+  const monthBudget = sumCategoryBudgetForMonth(currentMonth, category);
 
   const prev = previousMonth(currentMonth);
   let rolloverFromPrev = 0;
@@ -1272,21 +1652,19 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
   const buckets = [];
 
   months.forEach((month) => {
-    const mamaBudget = getBudgetAmountForMonth(month, category, "mama");
-    const papaBudget = getBudgetAmountForMonth(month, category, "papa");
-    if (Math.abs(mamaBudget) > 0.004) {
-      addOwnedBucket(buckets, month, "mama", mamaBudget);
-    }
-    if (Math.abs(papaBudget) > 0.004) {
-      addOwnedBucket(buckets, month, "papa", papaBudget);
-    }
+    PARENTS.forEach((owner) => {
+      const ownerBudget = getBudgetAmountForMonth(month, category, owner);
+      if (Math.abs(ownerBudget) > 0.004) {
+        addOwnedBucket(buckets, month, owner, ownerBudget);
+      }
+    });
 
     const txs = state.transactions
       .filter((tx) => tx.month === month && tx.category === category && !excludedTxIds.has(tx.id))
       .sort((a, b) => (a.date > b.date ? 1 : -1));
 
     txs.forEach((tx) => {
-      const owner = tx.createdBy === "papa" ? "papa" : "mama";
+      const owner = normalizeOwnerKey(tx.createdBy);
       if (tx.amount >= 0) {
         addOwnedBucket(buckets, tx.month, owner, tx.amount);
         pruneZeroBuckets(buckets);
@@ -1309,7 +1687,10 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
 
       const usageEntries = Array.isArray(tx.budgetUsage)
         ? tx.budgetUsage
-        : tx.borrowAmount > 0 && (tx.borrowFromParent === "mama" || tx.borrowFromParent === "papa")
+        : tx.borrowAmount > 0 &&
+            (tx.borrowFromParent === "mama" ||
+              tx.borrowFromParent === "papa" ||
+              tx.borrowFromParent === SOLO_OWNER)
           ? [{ fromParent: tx.borrowFromParent, fromCategory: category, amount: tx.borrowAmount }]
           : [];
 
@@ -1342,10 +1723,11 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
     });
   });
 
-  return {
-    mama: sum(buckets.filter((bucket) => bucket.owner === "mama").map((bucket) => bucket.amount)),
-    papa: sum(buckets.filter((bucket) => bucket.owner === "papa").map((bucket) => bucket.amount)),
-  };
+  const split = {};
+  PARENTS.forEach((owner) => {
+    split[owner] = sum(buckets.filter((bucket) => bucket.owner === owner).map((bucket) => bucket.amount));
+  });
+  return split;
 }
 
 async function resolveBudgetUsageDecision({
@@ -1356,6 +1738,15 @@ async function resolveBudgetUsageDecision({
   excludeTxId,
   excludeLinkedTransferIds = [],
 }) {
+  if (IS_SOLO_MODE) {
+    return resolveSoloBudgetUsageDecision({
+      category,
+      month,
+      requestedAmount,
+      excludeTxId,
+      excludeLinkedTransferIds,
+    });
+  }
   if (actingParent !== "mama" && actingParent !== "papa") {
     return { usage: [], cancelledByUser: false };
   }
@@ -1370,31 +1761,24 @@ async function resolveBudgetUsageDecision({
   const usage = [];
 
   while (remaining > 0) {
-    const ownPhase = remaining > 0;
-    const ownCandidates = otherCategories.map((item) => ({ fromParent: actingParent, fromCategory: item }));
-    const otherParentCandidates = [
+    // Alle bronnen tegelijk (geen aparte "eigen categorieën eerst"-fase), zodat bv. papa cosmetica
+    // zichtbaar blijft zolang mama nog zakgeld/kleding heeft.
+    const candidateDefs = [
       { fromParent: otherParent, fromCategory: category },
+      ...otherCategories.map((item) => ({ fromParent: actingParent, fromCategory: item })),
       ...otherCategories.map((item) => ({ fromParent: otherParent, fromCategory: item })),
     ];
-
-    const ownCandidateAvailability = ownCandidates.map((candidate) => {
-      const split = getParentRemainingSplit(candidate.fromCategory, month, { excludeTxIds });
-      const baseAvailable = Math.max(0, split[candidate.fromParent] ?? 0);
-      const alreadyUsed = usage
-        .filter(
-          (entry) =>
-            entry.fromParent === candidate.fromParent && entry.fromCategory === candidate.fromCategory
-        )
-        .reduce((acc, entry) => acc + entry.amount, 0);
-      const available = Math.max(0, baseAvailable - alreadyUsed);
-      return { ...candidate, available, selectable: available > 0.004 };
+    const seen = new Set();
+    const uniqueCandidates = candidateDefs.filter((candidate) => {
+      const key = `${candidate.fromParent}:${candidate.fromCategory}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
     });
 
-    const shouldStayInOwnParent = ownPhase && ownCandidateAvailability.some((entry) => entry.selectable);
-    const phaseCandidates = shouldStayInOwnParent ? ownCandidates : otherParentCandidates;
-
-    const options = phaseCandidates
-      .map((candidate) => {
+    const options = uniqueCandidates.map((candidate) => {
         const split = getParentRemainingSplit(candidate.fromCategory, month, { excludeTxIds });
         const baseAvailable = Math.max(0, split[candidate.fromParent] ?? 0);
         const alreadyUsed = usage
@@ -1459,16 +1843,33 @@ async function chooseBudgetSourceOption({ actingParent, category, remaining, opt
     return options[0] ?? null;
   }
   const selectable = options.filter((option) => option.selectable);
-  const recommended = [...selectable].sort((a, b) => b.available - a.available)[0] ?? selectable[0] ?? options[0];
+  const sameCategoryOtherParent = selectable.find(
+    (option) => option.fromParent !== actingParent && option.fromCategory === category
+  );
+  const recommended =
+    sameCategoryOtherParent ??
+    [...selectable].sort((a, b) => b.available - a.available)[0] ??
+    selectable[0] ??
+    options[0];
   budgetSourceChoiceState.options = options.map((option, index) => ({
     ...option,
     id: `${option.fromParent}-${option.fromCategory}-${index}`,
   }));
-  budgetSourceChoiceState.recommendedId = `${recommended.fromParent}-${recommended.fromCategory}-${options.indexOf(recommended)}`;
+  const recommendedIndex = budgetSourceChoiceState.options.findIndex(
+    (option) =>
+      option.fromParent === recommended.fromParent && option.fromCategory === recommended.fromCategory
+  );
+  budgetSourceChoiceState.recommendedId =
+    recommendedIndex >= 0
+      ? budgetSourceChoiceState.options[recommendedIndex].id
+      : budgetSourceChoiceState.options[0]?.id ?? null;
   budgetSourceChoiceState.selectedId = budgetSourceChoiceState.recommendedId;
 
-  budgetSourceMessageEl.textContent =
-    `Tekort op ${actingParent} ${humanCategory(category).toLowerCase()}: ${currency.format(remaining)}.`;
+  const parentLabel = IS_SOLO_MODE ? "jouw" : actingParent === "mama" ? "mama" : "papa";
+  const suffix = IS_SOLO_MODE
+    ? " Kies uit een andere categorie."
+    : " Kies waar het vandaan komt (ook dezelfde categorie bij de andere ouder).";
+  budgetSourceMessageEl.textContent = `Tekort op ${parentLabel} ${humanCategory(category).toLowerCase()}: ${currency.format(remaining)}.${suffix}`;
   renderBudgetSourceOptions();
   budgetSourceDialog.showModal();
 
@@ -1494,9 +1895,11 @@ function renderBudgetSourceOptions() {
       const cat = humanCategory(option.fromCategory).toLowerCase();
       const isActive = option.id === budgetSourceChoiceState.selectedId;
       const isRecommended = option.id === budgetSourceChoiceState.recommendedId;
+      const catLabel = `${getCategoryEmoji(option.fromCategory)} ${cat}`;
+      const sourceLabel = IS_SOLO_MODE ? catLabel : `${option.fromParent} · ${catLabel}`;
       return `
-        <button type="button" class="budget-source-option ${isActive ? "active" : ""} ${option.selectable ? "" : "disabled"}" data-option-id="${option.id}">
-          <span>${option.fromParent} ${cat}</span>
+        <button type="button" class="budget-source-option ${isActive ? "active" : ""} ${option.selectable ? "" : "disabled"}" data-option-id="${option.id}" ${option.selectable ? "" : "disabled"}>
+          <span>${sourceLabel}</span>
           <strong>${currency.format(option.available)}</strong>
           ${isRecommended ? `<em>Aanbevolen</em>` : option.selectable ? "" : `<em>Geen saldo beschikbaar</em>`}
         </button>
@@ -1590,6 +1993,10 @@ function renderParentMiniDashboard(categoryData) {
   if (!parentMiniDashboardEl) {
     return;
   }
+  if (IS_SOLO_MODE) {
+    parentMiniDashboardEl.innerHTML = "";
+    return;
+  }
   const categories = getEnabledCategoryIds();
   const splitByCategory = Object.fromEntries(
     categories.map((category) => [category, getParentRemainingSplit(category, currentMonth)])
@@ -1669,7 +2076,7 @@ function checkCalculationIntegrity(categoryData) {
     const split = getParentRemainingSplit(category, currentMonth);
     return {
       label: humanCategory(category).toLowerCase(),
-      diff: Math.abs(total - (split.mama + split.papa)),
+      diff: Math.abs(total - sumOwnerSplit(split)),
     };
   });
   checks.push({
@@ -1679,7 +2086,7 @@ function checkCalculationIntegrity(categoryData) {
         sum(
           getEnabledCategoryIds().map((category) => {
             const split = getParentRemainingSplit(category, currentMonth);
-            return split.mama + split.papa;
+            return sumOwnerSplit(split);
           })
         )
     ),
@@ -1710,27 +2117,43 @@ function buildTransactionRowsMarkup(items, includeParentName, includeActions = f
     .map((tx) => {
       const emoji = getCategoryEmoji(tx.category);
       const dateLabel = formatDate(tx.date);
-      const parentName = tx.createdBy === "mama" ? "mama" : tx.createdBy === "papa" ? "papa" : "ouder";
+      const parentName =
+        tx.createdBy === SOLO_OWNER
+          ? ""
+          : tx.createdBy === "mama"
+            ? "mama"
+            : tx.createdBy === "papa"
+              ? "papa"
+              : "ouder";
       const usageEntries = Array.isArray(tx.budgetUsage)
         ? tx.budgetUsage.filter((entry) => Number(entry.amount) > 0)
-        : tx.amount < 0 && tx.borrowAmount > 0 && (tx.borrowFromParent === "mama" || tx.borrowFromParent === "papa")
+        : tx.amount < 0 &&
+            tx.borrowAmount > 0 &&
+            (tx.borrowFromParent === "mama" ||
+              tx.borrowFromParent === "papa" ||
+              tx.borrowFromParent === SOLO_OWNER)
           ? [{ fromParent: tx.borrowFromParent, fromCategory: tx.category, amount: tx.borrowAmount }]
           : [];
       const usagePills = usageEntries
         .map((entry) => {
           const cat = entry.fromCategory;
           const crossParentNote =
-            (tx.createdBy === "mama" || tx.createdBy === "papa") && entry.fromParent !== tx.createdBy
+            !IS_SOLO_MODE &&
+            (tx.createdBy === "mama" || tx.createdBy === "papa") &&
+            entry.fromParent !== tx.createdBy
               ? ` (bij ${tx.createdBy} transactie)`
               : "";
-          return `<span class="tx-usage-pill">${currency.format(entry.amount)} van ${entry.fromParent} ${humanCategory(cat).toLowerCase()}${crossParentNote}</span>`;
+          const fromLabel = IS_SOLO_MODE
+            ? humanCategory(cat).toLowerCase()
+            : `${entry.fromParent} ${humanCategory(cat).toLowerCase()}`;
+          return `<span class="tx-usage-pill">${currency.format(entry.amount)} van ${fromLabel}${crossParentNote}</span>`;
         })
         .join("");
       return `
         <div class="tx-item">
           <div class="tx-icon tx-icon-${tx.category}">${emoji}</div>
           <div class="tx-body">
-            <strong>${humanCategory(tx.category)}${includeParentName ? ` · ${parentName}` : ""}</strong>
+            <strong>${humanCategory(tx.category)}${includeParentName && parentName ? ` · ${parentName}` : ""}</strong>
             <p class="tx-meta">${dateLabel}${tx.note ? ` · ${escapeHtml(tx.note)}` : ""}</p>
             ${usagePills ? `<div class="tx-usage-pills">${usagePills}</div>` : ""}
             ${
@@ -2078,9 +2501,10 @@ function simulateCategory(category, upToMonth) {
   const timeline = [];
 
   months.forEach((month) => {
-    const contribution =
-      getBudgetAmountForMonth(month, category, "mama") +
-      getBudgetAmountForMonth(month, category, "papa");
+    const contribution = PARENTS.reduce(
+      (acc, owner) => acc + getBudgetAmountForMonth(month, category, owner),
+      0
+    );
     if (Math.abs(contribution) > 0.004) {
       addToBucket(buckets, month, contribution);
     }
@@ -2377,7 +2801,10 @@ function setCategoryConfigStatus(message, isSuccess) {
 function handleCategoryConfigSubmit(event) {
   event.preventDefault();
   if (!session.loggedInParent) {
-    setCategoryConfigStatus("Log eerst in als ouder.", false);
+    setCategoryConfigStatus(
+      IS_SOLO_MODE ? "Log eerst in via Beheer (slotje)." : "Log eerst in als ouder.",
+      false
+    );
     return;
   }
   const label = newCategoryNameInput.value.trim();
@@ -2589,7 +3016,7 @@ function ensureCategoryStructures(stateRef) {
       return;
     }
     unique.forEach((category) => {
-      monthEntry[category.id] ??= { mama: 0, papa: 0 };
+      monthEntry[category.id] ??= createEmptyOwnerAmounts();
       PARENTS.forEach((parent) => {
         if (typeof monthEntry[category.id][parent] !== "number") {
           monthEntry[category.id][parent] = 0;
@@ -2603,6 +3030,9 @@ function ensureCategoryStructures(stateRef) {
       delete tx.kledingSub;
     }
   });
+
+  normalizeStateForSolo(stateRef);
+  stampAppModeOnState(stateRef);
 }
 
 // State persistence and migrations
@@ -2688,8 +3118,11 @@ function replaceAppState(nextMerged) {
 }
 
 async function hydrateFromCloudSnapshot() {
-  cloudSyncState.syncEligible = looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID);
-  cloudSyncState.lastSyncError = "";
+  cloudSyncState.syncEligible =
+    looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID) && !CLOUD_SYNC_BLOCKED;
+  cloudSyncState.lastSyncError = CLOUD_SYNC_BLOCKED
+    ? "Solo mag niet dezelfde kind-ID als Lena gebruiken — maak een aparte child in Supabase."
+    : "";
 
   if (!supabaseClient || !cloudSyncState.connected || !cloudSyncState.syncEligible) {
     renderCloudSyncStatus();
@@ -2712,6 +3145,13 @@ async function hydrateFromCloudSnapshot() {
     if (!data?.payload || typeof data.payload !== "object") {
       await pushCloudSnapshot({ silent: true });
       cloudSyncState.lastSyncedAt = Date.now();
+      renderCloudSyncStatus();
+      return;
+    }
+
+    const compatibility = payloadCompatibleWithCurrentApp(data.payload);
+    if (!compatibility.ok) {
+      cloudSyncState.lastSyncError = compatibility.reason;
       renderCloudSyncStatus();
       return;
     }
@@ -2747,6 +3187,7 @@ async function pushCloudSnapshot(options = {}) {
   try {
     state.syncRevision = Math.max(Number(state.syncRevision) || 0, Date.now());
     ensureCategoryStructures(state);
+    stampAppModeOnState(state);
     const payload = JSON.parse(JSON.stringify(state));
     const { error } = await supabaseClient.from("child_budget_snapshots").upsert(
       {
@@ -2792,15 +3233,43 @@ function flushScheduledCloudPush() {
   void pushCloudSnapshot({ silent: true });
 }
 
+function readLocalStorageRaw() {
+  let raw = localStorage.getItem(STORAGE_KEY);
+  if (raw || STORAGE_KEY === LEGACY_STORAGE_KEY) {
+    return raw;
+  }
+  const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (!legacyRaw) {
+    return null;
+  }
+  try {
+    const legacyParsed = JSON.parse(legacyRaw);
+    const legacyMode = inferPayloadAppMode(legacyParsed);
+    if (legacyMode !== null && legacyMode !== APP_MODE) {
+      return null;
+    }
+    return legacyRaw;
+  } catch {
+    return null;
+  }
+}
+
 function loadState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readLocalStorageRaw();
     if (!raw) {
       const fresh = structuredClone(defaultState);
       ensureCategoryStructures(fresh);
       return fresh;
     }
-    return mergeParsedIntoBase(JSON.parse(raw));
+    const merged = mergeParsedIntoBase(JSON.parse(raw));
+    const compatibility = payloadCompatibleWithCurrentApp(merged);
+    if (!compatibility.ok) {
+      const fresh = structuredClone(defaultState);
+      ensureCategoryStructures(fresh);
+      return fresh;
+    }
+    return merged;
   } catch {
     const fallback = structuredClone(defaultState);
     ensureCategoryStructures(fallback);
@@ -2819,6 +3288,9 @@ function saveState(options = {}) {
 
 function resetAllData() {
   localStorage.removeItem(STORAGE_KEY);
+  if (LEGACY_STORAGE_KEY !== STORAGE_KEY) {
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  }
   const fresh = structuredClone(defaultState);
   Object.keys(state).forEach((key) => {
     delete state[key];

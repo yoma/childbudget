@@ -11,7 +11,7 @@
         const buildEl = document.getElementById("adminBuildMeta");
         const statusEl = document.getElementById("adminAuthStatus");
         if (buildEl) {
-          buildEl.innerHTML = '<span class="build-status-dot offline" aria-hidden="true"></span>Build 2026-04-28-1623 · scriptfout: ' + label;
+          buildEl.innerHTML = '<span class="build-status-dot offline" aria-hidden="true"></span>Build 2026-05-08-1400 · scriptfout: ' + label;
         }
         if (statusEl) {
           statusEl.textContent = "Script laden mislukt: " + label + ". Upload/check pad en herlaad.";
@@ -58,7 +58,7 @@
           <p class="eyebrow">Child Budget</p>
           <h1>Super Admin</h1>
           <p class="hero-sub">Families beheren (volledig gescheiden per gezin).</p>
-          <p id="adminBuildMeta" class="build-pill admin-build-pill">Build 2026-04-28-1623 · wacht op initialisatie...</p>
+          <p id="adminBuildMeta" class="build-pill admin-build-pill">Build 2026-05-08-1400 · wacht op initialisatie...</p>
         </div>
       </header>
 
@@ -98,6 +98,13 @@
               <span>Kind slug</span>
               <input id="childSlugInput" type="text" placeholder="lena" required />
             </label>
+            <label class="wide">
+              <span>App-modus (link)</span>
+              <select id="createFamilyAppModeInput">
+                <option value="family">Family (mama + papa)</option>
+                <option value="solo">Solo (één beheerder, bv. tiener)</option>
+              </select>
+            </label>
             <p id="createFamilyStatus" class="muted wide"></p>
             <p id="createFamilyLink" class="muted wide"></p>
             <button class="btn btn-primary" type="submit">Family aanmaken</button>
@@ -122,7 +129,15 @@
               <span>Kind slug</span>
               <input id="newChildSlugInput" type="text" placeholder="emma" required />
             </label>
+            <label class="wide">
+              <span>App-modus (link)</span>
+              <select id="createChildAppModeInput">
+                <option value="family">Family (mama + papa)</option>
+                <option value="solo">Solo (één beheerder, bv. tiener)</option>
+              </select>
+            </label>
             <p id="createChildStatus" class="muted wide"></p>
+            <p id="createChildLink" class="muted wide"></p>
             <button class="btn btn-primary" type="submit">Kind toevoegen in bestaande family</button>
           </form>
         </details>
