@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-08-1615";
+const APP_BUILD_VERSION = "2026-05-08-1625";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -3122,72 +3122,68 @@ function ensureCategoryStructures(stateRef) {
 }
 
 // State persistence and migrations
+function mergeOwnerKeyedMaps(baseMap, parsedMap) {
+  const merged = { ...baseMap, ...(parsedMap ?? {}) };
+  PARENTS.forEach((owner) => {
+    merged[owner] = { ...(baseMap?.[owner] ?? {}), ...(parsedMap?.[owner] ?? {}) };
+  });
+  return merged;
+}
+
+function mergeParentMessageEntry(parsedEntry, baseEntry) {
+  const base = baseEntry ?? { text: "", expiresAt: null };
+  if (typeof parsedEntry === "string") {
+    return { text: parsedEntry, expiresAt: null };
+  }
+  return {
+    text: parsedEntry?.text ?? base.text ?? "",
+    expiresAt: parsedEntry?.expiresAt ?? base.expiresAt ?? null,
+  };
+}
+
+function mergeCoachSettings(parsedCoach, baseCoach) {
+  const base = baseCoach ?? {
+    autoCoachEnabled: true,
+    sensitivity: "normal",
+    parentMessages: {},
+  };
+  const parsed = parsedCoach ?? {};
+  const parentMessages = { ...base.parentMessages, ...(parsed.parentMessages ?? {}) };
+  PARENTS.forEach((owner) => {
+    parentMessages[owner] = mergeParentMessageEntry(
+      parsed.parentMessages?.[owner],
+      base.parentMessages?.[owner]
+    );
+  });
+  return {
+    ...base,
+    ...parsed,
+    autoCoachEnabled: parsed.autoCoachEnabled ?? base.autoCoachEnabled,
+    sensitivity: parsed.sensitivity ?? base.sensitivity ?? "normal",
+    parentMessages,
+  };
+}
+
 function mergeParsedIntoBase(parsed) {
   const base = structuredClone(defaultState);
 
   if (parsed.pin && !parsed.pins) {
-    base.pins = { mama: parsed.pin, papa: parsed.pin };
+    base.pins = IS_SOLO_MODE
+      ? { [SOLO_OWNER]: parsed.pin }
+      : { mama: parsed.pin, papa: parsed.pin };
   }
 
   const merged = {
     ...base,
     ...parsed,
     pins: { ...base.pins, ...(parsed.pins ?? {}) },
-    recurringBudgets: {
-      ...base.recurringBudgets,
-      ...(parsed.recurringBudgets ?? {}),
-      mama: { ...base.recurringBudgets.mama, ...(parsed.recurringBudgets?.mama ?? {}) },
-      papa: { ...base.recurringBudgets.papa, ...(parsed.recurringBudgets?.papa ?? {}) },
-    },
-    recurringStartMonth: {
-      ...base.recurringStartMonth,
-      ...(parsed.recurringStartMonth ?? {}),
-      mama: { ...base.recurringStartMonth.mama, ...(parsed.recurringStartMonth?.mama ?? {}) },
-      papa: { ...base.recurringStartMonth.papa, ...(parsed.recurringStartMonth?.papa ?? {}) },
-    },
-    recurringIntervalMonths: {
-      ...base.recurringIntervalMonths,
-      ...(parsed.recurringIntervalMonths ?? {}),
-      mama: { ...base.recurringIntervalMonths.mama, ...(parsed.recurringIntervalMonths?.mama ?? {}) },
-      papa: { ...base.recurringIntervalMonths.papa, ...(parsed.recurringIntervalMonths?.papa ?? {}) },
-    },
-    coachSettings: {
-      ...base.coachSettings,
-      ...(parsed.coachSettings ?? {}),
-      autoCoachEnabled: parsed.coachSettings?.autoCoachEnabled ?? base.coachSettings.autoCoachEnabled,
-      parentMessages: {
-        ...base.coachSettings.parentMessages,
-        ...(parsed.coachSettings?.parentMessages ?? {}),
-        mama: {
-          ...base.coachSettings.parentMessages.mama,
-          ...(parsed.coachSettings?.parentMessages?.mama ?? {}),
-          text:
-            typeof parsed.coachSettings?.parentMessages?.mama === "string"
-              ? parsed.coachSettings.parentMessages.mama
-              : parsed.coachSettings?.parentMessages?.mama?.text ??
-                base.coachSettings.parentMessages.mama.text,
-          expiresAt:
-            typeof parsed.coachSettings?.parentMessages?.mama === "string"
-              ? null
-              : parsed.coachSettings?.parentMessages?.mama?.expiresAt ??
-                base.coachSettings.parentMessages.mama.expiresAt,
-        },
-        papa: {
-          ...base.coachSettings.parentMessages.papa,
-          ...(parsed.coachSettings?.parentMessages?.papa ?? {}),
-          text:
-            typeof parsed.coachSettings?.parentMessages?.papa === "string"
-              ? parsed.coachSettings.parentMessages.papa
-              : parsed.coachSettings?.parentMessages?.papa?.text ??
-                base.coachSettings.parentMessages.papa.text,
-          expiresAt:
-            typeof parsed.coachSettings?.parentMessages?.papa === "string"
-              ? null
-              : parsed.coachSettings?.parentMessages?.papa?.expiresAt ??
-                base.coachSettings.parentMessages.papa.expiresAt,
-        },
-      },
-    },
+    recurringBudgets: mergeOwnerKeyedMaps(base.recurringBudgets, parsed.recurringBudgets),
+    recurringStartMonth: mergeOwnerKeyedMaps(base.recurringStartMonth, parsed.recurringStartMonth),
+    recurringIntervalMonths: mergeOwnerKeyedMaps(
+      base.recurringIntervalMonths,
+      parsed.recurringIntervalMonths
+    ),
+    coachSettings: mergeCoachSettings(parsed.coachSettings, base.coachSettings),
   };
   delete merged.kledingSubSplitEnabled;
   delete merged.kledingSubSplits;
