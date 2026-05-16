@@ -3124,10 +3124,60 @@ function ensureCategoryStructures(stateRef) {
 // State persistence and migrations
 function mergeParsedIntoBase(parsed) {
   const base = structuredClone(defaultState);
+  const baseCoachSettings = base.coachSettings ?? {
+    autoCoachEnabled: true,
+    sensitivity: "normal",
+    parentMessages: {},
+  };
 
   if (parsed.pin && !parsed.pins) {
     base.pins = { mama: parsed.pin, papa: parsed.pin };
   }
+
+  const ownerScopedRecurringBudgets = PARENTS.reduce((acc, owner) => {
+    acc[owner] = {
+      ...(base.recurringBudgets?.[owner] ?? {}),
+      ...(parsed.recurringBudgets?.[owner] ?? {}),
+    };
+    return acc;
+  }, {});
+
+  const ownerScopedRecurringStarts = PARENTS.reduce((acc, owner) => {
+    acc[owner] = {
+      ...(base.recurringStartMonth?.[owner] ?? {}),
+      ...(parsed.recurringStartMonth?.[owner] ?? {}),
+    };
+    return acc;
+  }, {});
+
+  const ownerScopedRecurringIntervals = PARENTS.reduce((acc, owner) => {
+    acc[owner] = {
+      ...(base.recurringIntervalMonths?.[owner] ?? {}),
+      ...(parsed.recurringIntervalMonths?.[owner] ?? {}),
+    };
+    return acc;
+  }, {});
+
+  const parsedParentMessages = parsed.coachSettings?.parentMessages ?? {};
+  const baseParentMessages = baseCoachSettings.parentMessages ?? {};
+  const mergedParentMessages = { ...baseParentMessages, ...parsedParentMessages };
+
+  PARENTS.forEach((owner) => {
+    const parsedMessage = parsedParentMessages?.[owner];
+    const baseMessage = baseParentMessages?.[owner] ?? { text: "", expiresAt: null };
+    mergedParentMessages[owner] = {
+      ...baseMessage,
+      ...(parsedMessage && typeof parsedMessage === "object" ? parsedMessage : {}),
+      text:
+        typeof parsedMessage === "string"
+          ? parsedMessage
+          : parsedMessage?.text ?? baseMessage.text ?? "",
+      expiresAt:
+        typeof parsedMessage === "string"
+          ? null
+          : parsedMessage?.expiresAt ?? baseMessage.expiresAt ?? null,
+    };
+  });
 
   const merged = {
     ...base,
@@ -3136,57 +3186,23 @@ function mergeParsedIntoBase(parsed) {
     recurringBudgets: {
       ...base.recurringBudgets,
       ...(parsed.recurringBudgets ?? {}),
-      mama: { ...base.recurringBudgets.mama, ...(parsed.recurringBudgets?.mama ?? {}) },
-      papa: { ...base.recurringBudgets.papa, ...(parsed.recurringBudgets?.papa ?? {}) },
+      ...ownerScopedRecurringBudgets,
     },
     recurringStartMonth: {
       ...base.recurringStartMonth,
       ...(parsed.recurringStartMonth ?? {}),
-      mama: { ...base.recurringStartMonth.mama, ...(parsed.recurringStartMonth?.mama ?? {}) },
-      papa: { ...base.recurringStartMonth.papa, ...(parsed.recurringStartMonth?.papa ?? {}) },
+      ...ownerScopedRecurringStarts,
     },
     recurringIntervalMonths: {
       ...base.recurringIntervalMonths,
       ...(parsed.recurringIntervalMonths ?? {}),
-      mama: { ...base.recurringIntervalMonths.mama, ...(parsed.recurringIntervalMonths?.mama ?? {}) },
-      papa: { ...base.recurringIntervalMonths.papa, ...(parsed.recurringIntervalMonths?.papa ?? {}) },
+      ...ownerScopedRecurringIntervals,
     },
     coachSettings: {
-      ...base.coachSettings,
+      ...baseCoachSettings,
       ...(parsed.coachSettings ?? {}),
-      autoCoachEnabled: parsed.coachSettings?.autoCoachEnabled ?? base.coachSettings.autoCoachEnabled,
-      parentMessages: {
-        ...base.coachSettings.parentMessages,
-        ...(parsed.coachSettings?.parentMessages ?? {}),
-        mama: {
-          ...base.coachSettings.parentMessages.mama,
-          ...(parsed.coachSettings?.parentMessages?.mama ?? {}),
-          text:
-            typeof parsed.coachSettings?.parentMessages?.mama === "string"
-              ? parsed.coachSettings.parentMessages.mama
-              : parsed.coachSettings?.parentMessages?.mama?.text ??
-                base.coachSettings.parentMessages.mama.text,
-          expiresAt:
-            typeof parsed.coachSettings?.parentMessages?.mama === "string"
-              ? null
-              : parsed.coachSettings?.parentMessages?.mama?.expiresAt ??
-                base.coachSettings.parentMessages.mama.expiresAt,
-        },
-        papa: {
-          ...base.coachSettings.parentMessages.papa,
-          ...(parsed.coachSettings?.parentMessages?.papa ?? {}),
-          text:
-            typeof parsed.coachSettings?.parentMessages?.papa === "string"
-              ? parsed.coachSettings.parentMessages.papa
-              : parsed.coachSettings?.parentMessages?.papa?.text ??
-                base.coachSettings.parentMessages.papa.text,
-          expiresAt:
-            typeof parsed.coachSettings?.parentMessages?.papa === "string"
-              ? null
-              : parsed.coachSettings?.parentMessages?.papa?.expiresAt ??
-                base.coachSettings.parentMessages.papa.expiresAt,
-        },
-      },
+      autoCoachEnabled: parsed.coachSettings?.autoCoachEnabled ?? baseCoachSettings.autoCoachEnabled,
+      parentMessages: mergedParentMessages,
     },
   };
   delete merged.kledingSubSplitEnabled;
