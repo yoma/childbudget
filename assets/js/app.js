@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-08-1600";
+const APP_BUILD_VERSION = "2026-05-08-1615";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -949,7 +949,11 @@ function getCloudBuildMeta() {
     return { dotClass: "offline", label: "cloud offline" };
   }
   if (cloudSyncState.syncEligible && cloudSyncState.lastSyncError) {
-    return { dotClass: "offline", label: "sync-fout" };
+    const short = cloudSyncState.lastSyncError.slice(0, 48);
+    return {
+      dotClass: "offline",
+      label: short.length < cloudSyncState.lastSyncError.length ? `sync-fout: ${short}…` : `sync-fout: ${short}`,
+    };
   }
   if (cloudSyncState.syncEligible && cloudSyncState.lastSyncedAt) {
     return { dotClass: "online", label: "cloud · data gesynchroniseerd" };
@@ -3233,6 +3237,15 @@ async function hydrateFromCloudSnapshot() {
 
     const compatibility = payloadCompatibleWithCurrentApp(data.payload);
     if (!compatibility.ok) {
+      const remoteMode = inferPayloadAppMode(data.payload);
+      if (IS_SOLO_MODE && remoteMode === "family") {
+        await pushCloudSnapshot({ silent: true });
+        if (!cloudSyncState.lastSyncError) {
+          cloudSyncState.lastSyncedAt = Date.now();
+          renderCloudSyncStatus();
+          return;
+        }
+      }
       cloudSyncState.lastSyncError = compatibility.reason;
       renderCloudSyncStatus();
       return;
