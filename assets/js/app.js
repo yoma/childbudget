@@ -7,7 +7,34 @@ const CATEGORY_COLOR_FALLBACK_PALETTE = ["#4a9ca8", "#b86893", "#6f8e3a", "#ad7d
 
 const urlParams = new URLSearchParams(window.location.search);
 const appConfig = window.__SUPABASE_CONFIG__ ?? {};
-const IS_SOLO_MODE = (urlParams.get("mode") || "").trim().toLowerCase() === "solo";
+
+function resolvePathSlugRoute() {
+  const routes = appConfig.childRoutes ?? {};
+  const presetSlug = String(window.__ROUTE_SLUG__ ?? "").trim().toLowerCase();
+  if (presetSlug && routes[presetSlug]) {
+    return { slug: presetSlug, ...routes[presetSlug] };
+  }
+  const reserved = new Set(["childbudget", "admin", "assets", "index.html"]);
+  const segments = window.location.pathname.split("/").filter(Boolean);
+  for (let i = segments.length - 1; i >= 0; i -= 1) {
+    const segment = segments[i].toLowerCase();
+    if (reserved.has(segment)) {
+      continue;
+    }
+    if (routes[segment]) {
+      return { slug: segment, ...routes[segment] };
+    }
+  }
+  const routeParam = (urlParams.get("route") || "").trim().toLowerCase();
+  if (routeParam && routes[routeParam]) {
+    return { slug: routeParam, ...routes[routeParam] };
+  }
+  return null;
+}
+
+const pathRoute = resolvePathSlugRoute();
+const IS_SOLO_MODE =
+  (urlParams.get("mode") || pathRoute?.mode || "").trim().toLowerCase() === "solo";
 const SOLO_OWNER = "self";
 const PARENTS = IS_SOLO_MODE ? [SOLO_OWNER] : ["mama", "papa"];
 
@@ -83,17 +110,22 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-08-1300";
+const APP_BUILD_VERSION = "2026-05-08-1600";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
-const childIdFromUrl = (urlParams.get("child") || "").trim();
-// Solo gebruikt nooit de family-default (Lena) uit config — alleen ?child= of soloChildId.
+const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
+// Solo gebruikt nooit de family-default (Lena) uit config — alleen route, ?child= of soloChildId.
 const ACTIVE_CHILD_ID =
   childIdFromUrl ||
   (IS_SOLO_MODE ? String(appConfig.soloChildId ?? "").trim() : CONFIGURED_LENA_CHILD_ID) ||
   "default-child";
-const ACTIVE_FAMILY_ID = (urlParams.get("family") || appConfig.familyId || "default-family").trim();
-const CHILD_NAME = (urlParams.get("childName") || appConfig.childName || "Lena").trim();
+const ACTIVE_FAMILY_ID = (
+  urlParams.get("family") ||
+  pathRoute?.familyId ||
+  appConfig.familyId ||
+  "default-family"
+).trim();
+const CHILD_NAME = (urlParams.get("childName") || pathRoute?.childName || appConfig.childName || "Lena").trim();
 const defaultAppName = `${CHILD_NAME.toLowerCase().replace(/\s+/g, "-")}_budget`;
 const APP_NAME = (urlParams.get("appName") || appConfig.appName || defaultAppName).trim();
 const STORAGE_KEY = `child-budget-v1:${ACTIVE_FAMILY_ID}:${ACTIVE_CHILD_ID}:${APP_MODE}`;
@@ -103,6 +135,7 @@ window.__ACTIVE_APP_CONTEXT__ = {
   familyId: ACTIVE_FAMILY_ID,
   childId: ACTIVE_CHILD_ID,
   mode: APP_MODE,
+  routeSlug: pathRoute?.slug ?? null,
   storageKey: STORAGE_KEY,
 };
 
@@ -282,11 +315,17 @@ function normalizeStateForSolo(stateRef) {
   });
 }
 
+function applyCoachBadgeLabel() {
+  const label = `${CHILD_NAME.toUpperCase()} COACH`;
+  document.documentElement.style.setProperty("--coach-badge-label", `"${label}"`);
+}
+
 function applySoloModeDom() {
   if (!IS_SOLO_MODE) {
     return;
   }
   document.body.classList.add("app-mode-solo");
+  applyCoachBadgeLabel();
 
   const pinTitle = pinForm?.querySelector("h3");
   const pinHelp = pinForm?.querySelector("p.muted");
@@ -334,7 +373,49 @@ function applySoloModeDom() {
     parentMessageLabelEl.textContent = "Persoonlijke herinnering (verschijnt bovenaan)";
   }
 
+  const coachSection = document.getElementById("adminCoachSection");
+  if (coachSection) {
+    const coachTitle = coachSection.querySelector("h3");
+    if (coachTitle) {
+      coachTitle.textContent = `${CHILD_NAME} Coach instellingen`;
+    }
+    const coachIntro = coachSection.querySelector(":scope > p.muted");
+    if (coachIntro) {
+      coachIntro.textContent = "Automatische coach en gevoeligheid voor jouw budget.";
+    }
+    const coachSettingLabels = coachSection.querySelectorAll(".coach-settings-top label > span");
+    if (coachSettingLabels[0]) {
+      coachSettingLabels[0].textContent = "Automatische coach aan";
+    }
+    if (coachSettingLabels[1]) {
+      coachSettingLabels[1].textContent = "Coach gevoeligheid";
+    }
+    const messageSubmitBtn = coachSection.querySelector("#parentMessageForm button[type='submit']");
+    if (messageSubmitBtn) {
+      messageSubmitBtn.textContent = "Herinnering opslaan";
+    }
+  }
+
+  const pinSection = document.getElementById("adminPinSection");
+  if (pinSection) {
+    const pinHelpAdmin = pinSection.querySelector("p.muted");
+    if (pinHelpAdmin) {
+      pinHelpAdmin.textContent = "Wijzig je PIN voor beheer.";
+    }
+  }
+
+  const txAccordion = document.getElementById("adminTransactionsSection");
+  if (txAccordion) {
+    const summary = txAccordion.querySelector("summary");
+    if (summary) {
+      summary.textContent = "Alle transacties bekijken";
+    }
+  }
+
   document.getElementById("parentDashboardSection")?.classList.add("hidden");
+  document
+    .querySelector('.admin-nav-btn[data-target="parentDashboardSection"]')
+    ?.classList.add("hidden");
   parentTxFilterParentInput?.closest("label")?.classList.add("hidden");
 }
 
@@ -880,6 +961,7 @@ function getCloudBuildMeta() {
 }
 
 function applyBranding() {
+  applyCoachBadgeLabel();
   if (appTitleEl) {
     appTitleEl.textContent = APP_NAME;
   }

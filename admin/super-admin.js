@@ -382,6 +382,15 @@ function formatAppLinkHtml(appUrl, appMode) {
 function buildChildAppUrl(familyId, childId, childSlug, childName, appMode = "family") {
   const basePath = window.location.pathname.replace(/\/admin\/super-admin\.html$/i, "");
   const origin = window.location.origin;
+  const routes = cfg.childRoutes ?? {};
+  const slugMatch = Object.entries(routes).find(([, route]) => {
+    return route.familyId === familyId && route.childId === childId && (route.mode || "family") === appMode;
+  });
+  if (slugMatch) {
+    const slug = slugMatch[0];
+    const shortUrl = `${origin}${basePath}/${slug}/`;
+    return shortUrl.endsWith("//") ? `${origin}${basePath}/${slug}` : shortUrl;
+  }
   const params = new URLSearchParams({
     family: familyId,
     child: childId,
