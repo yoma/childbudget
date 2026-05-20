@@ -546,7 +546,6 @@ const txAmountModeHint = document.getElementById("txAmountModeHint");
 const txNoteInput = document.getElementById("txNote");
 const txSubmitBtn = document.getElementById("txSubmitBtn");
 const cancelTxEditBtn = document.getElementById("cancelTxEditBtn");
-const txPresetButtons = document.querySelectorAll(".tx-preset-btn");
 const txQuickAmountButtons = document.querySelectorAll(".tx-quick-btn");
 const txTopupButtons = document.querySelectorAll(".tx-topup-btn");
 const transactionListEl = document.getElementById("transactionList");
@@ -691,9 +690,6 @@ async function init() {
   });
   txTopupButtons.forEach((button) => {
     button.addEventListener("click", handleTopupQuickAmountClick);
-  });
-  txPresetButtons.forEach((button) => {
-    button.addEventListener("click", handleTxPresetClick);
   });
   categoryConfigForm?.addEventListener("submit", handleCategoryConfigSubmit);
 
@@ -2378,31 +2374,6 @@ function handleQuickAmountClick(event) {
   txAmountInput.focus();
 }
 
-function handleTxPresetClick(event) {
-  const target = event.currentTarget;
-  if (!(target instanceof HTMLElement)) {
-    return;
-  }
-  const preset = target.dataset.preset;
-  if (preset === "kleding-expense") {
-    if (!getEnabledCategoryIds().includes("kleding")) {
-      return;
-    }
-    txCategoryInput.value = "kleding";
-    setTransactionMode("expense");
-    txAmountInput.focus();
-    return;
-  }
-  if (preset === "zakgeld-expense") {
-    if (!getEnabledCategoryIds().includes("zakgeld")) {
-      return;
-    }
-    txCategoryInput.value = "zakgeld";
-    setTransactionMode("expense");
-    txAmountInput.focus();
-  }
-}
-
 function handleTopupQuickAmountClick(event) {
   const target = event.currentTarget;
   if (!(target instanceof HTMLElement)) {
@@ -2803,24 +2774,6 @@ function refreshCategorySelectors() {
     budgetCategoryInput.value = enabled[0];
   }
   parentTxFilterCategoryInput.value = filterCurrent === "all" || all.includes(filterCurrent) ? filterCurrent : "all";
-
-  document.querySelectorAll(".tx-preset-btn").forEach((button) => {
-    if (!(button instanceof HTMLElement)) {
-      return;
-    }
-    const preset = button.dataset.preset;
-    const linkedCategory =
-      preset === "kleding-expense" ? "kleding" : preset === "zakgeld-expense" ? "zakgeld" : null;
-    if (!linkedCategory) {
-      return;
-    }
-    const isEnabled = enabled.includes(linkedCategory);
-    button.classList.toggle("hidden", !isEnabled);
-    button.classList.toggle("tx-preset-hidden", !isEnabled);
-    button.disabled = !isEnabled;
-    button.setAttribute("aria-hidden", String(!isEnabled));
-    button.style.display = isEnabled ? "" : "none";
-  });
 }
 
 function ensureTransactionCategorySelectable(categoryId) {
@@ -3166,6 +3119,11 @@ function mergeCoachSettings(parsedCoach, baseCoach) {
 
 function mergeParsedIntoBase(parsed) {
   const base = structuredClone(defaultState);
+  const baseCoachSettings = base.coachSettings ?? {
+    autoCoachEnabled: true,
+    sensitivity: "normal",
+    parentMessages: {},
+  };
 
   if (parsed.pin && !parsed.pins) {
     base.pins = IS_SOLO_MODE
@@ -3183,7 +3141,7 @@ function mergeParsedIntoBase(parsed) {
       base.recurringIntervalMonths,
       parsed.recurringIntervalMonths
     ),
-    coachSettings: mergeCoachSettings(parsed.coachSettings, base.coachSettings),
+    coachSettings: mergeCoachSettings(parsed.coachSettings, baseCoachSettings),
   };
   delete merged.kledingSubSplitEnabled;
   delete merged.kledingSubSplits;
