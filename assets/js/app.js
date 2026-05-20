@@ -546,7 +546,7 @@ const txAmountModeHint = document.getElementById("txAmountModeHint");
 const txNoteInput = document.getElementById("txNote");
 const txSubmitBtn = document.getElementById("txSubmitBtn");
 const cancelTxEditBtn = document.getElementById("cancelTxEditBtn");
-const txPresetButtons = document.querySelectorAll(".tx-preset-btn");
+const txPresetContainer = document.querySelector(".tx-presets");
 const txQuickAmountButtons = document.querySelectorAll(".tx-quick-btn");
 const txTopupButtons = document.querySelectorAll(".tx-topup-btn");
 const transactionListEl = document.getElementById("transactionList");
@@ -692,9 +692,8 @@ async function init() {
   txTopupButtons.forEach((button) => {
     button.addEventListener("click", handleTopupQuickAmountClick);
   });
-  txPresetButtons.forEach((button) => {
-    button.addEventListener("click", handleTxPresetClick);
-  });
+  txPresetContainer?.addEventListener("click", handleTxPresetClick);
+  txCategoryInput?.addEventListener("change", syncTransactionPresetButtonState);
   categoryConfigForm?.addEventListener("submit", handleCategoryConfigSubmit);
 
   applyInitialViewMode();
@@ -2379,28 +2378,22 @@ function handleQuickAmountClick(event) {
 }
 
 function handleTxPresetClick(event) {
-  const target = event.currentTarget;
-  if (!(target instanceof HTMLElement)) {
+  const target = event.target;
+  if (!(target instanceof Element)) {
     return;
   }
-  const preset = target.dataset.preset;
-  if (preset === "kleding-expense") {
-    if (!getEnabledCategoryIds().includes("kleding")) {
-      return;
-    }
-    txCategoryInput.value = "kleding";
-    setTransactionMode("expense");
-    txAmountInput.focus();
+  const button = target.closest(".tx-preset-btn");
+  if (!(button instanceof HTMLElement)) {
     return;
   }
-  if (preset === "zakgeld-expense") {
-    if (!getEnabledCategoryIds().includes("zakgeld")) {
-      return;
-    }
-    txCategoryInput.value = "zakgeld";
-    setTransactionMode("expense");
-    txAmountInput.focus();
+  const categoryId = button.dataset.categoryId;
+  if (!categoryId || !getEnabledCategoryIds().includes(categoryId)) {
+    return;
   }
+  txCategoryInput.value = categoryId;
+  setTransactionMode("expense");
+  syncTransactionPresetButtonState();
+  txAmountInput.focus();
 }
 
 function handleTopupQuickAmountClick(event) {
@@ -2803,23 +2796,34 @@ function refreshCategorySelectors() {
     budgetCategoryInput.value = enabled[0];
   }
   parentTxFilterCategoryInput.value = filterCurrent === "all" || all.includes(filterCurrent) ? filterCurrent : "all";
+  renderTransactionPresetButtons(enabled);
+}
 
-  document.querySelectorAll(".tx-preset-btn").forEach((button) => {
+function renderTransactionPresetButtons(enabledCategoryIds = getEnabledCategoryIds()) {
+  if (!txPresetContainer) {
+    return;
+  }
+  txPresetContainer.innerHTML = enabledCategoryIds
+    .map(
+      (categoryId) =>
+        `<button type="button" class="tx-preset-btn" data-category-id="${categoryId}">${getCategoryEmoji(
+          categoryId
+        )} ${escapeHtml(humanCategory(categoryId))} uitgave</button>`
+    )
+    .join("");
+  syncTransactionPresetButtonState();
+}
+
+function syncTransactionPresetButtonState() {
+  if (!txPresetContainer) {
+    return;
+  }
+  const selectedCategory = txCategoryInput?.value;
+  txPresetContainer.querySelectorAll(".tx-preset-btn").forEach((button) => {
     if (!(button instanceof HTMLElement)) {
       return;
     }
-    const preset = button.dataset.preset;
-    const linkedCategory =
-      preset === "kleding-expense" ? "kleding" : preset === "zakgeld-expense" ? "zakgeld" : null;
-    if (!linkedCategory) {
-      return;
-    }
-    const isEnabled = enabled.includes(linkedCategory);
-    button.classList.toggle("hidden", !isEnabled);
-    button.classList.toggle("tx-preset-hidden", !isEnabled);
-    button.disabled = !isEnabled;
-    button.setAttribute("aria-hidden", String(!isEnabled));
-    button.style.display = isEnabled ? "" : "none";
+    button.classList.toggle("active", button.dataset.categoryId === selectedCategory);
   });
 }
 
