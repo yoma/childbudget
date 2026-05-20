@@ -546,7 +546,6 @@ const txAmountModeHint = document.getElementById("txAmountModeHint");
 const txNoteInput = document.getElementById("txNote");
 const txSubmitBtn = document.getElementById("txSubmitBtn");
 const cancelTxEditBtn = document.getElementById("cancelTxEditBtn");
-const txPresetContainer = document.querySelector(".tx-presets");
 const txQuickAmountButtons = document.querySelectorAll(".tx-quick-btn");
 const txTopupButtons = document.querySelectorAll(".tx-topup-btn");
 const transactionListEl = document.getElementById("transactionList");
@@ -692,8 +691,6 @@ async function init() {
   txTopupButtons.forEach((button) => {
     button.addEventListener("click", handleTopupQuickAmountClick);
   });
-  txPresetContainer?.addEventListener("click", handleTxPresetClick);
-  txCategoryInput?.addEventListener("change", syncTransactionPresetButtonState);
   categoryConfigForm?.addEventListener("submit", handleCategoryConfigSubmit);
 
   applyInitialViewMode();
@@ -2377,25 +2374,6 @@ function handleQuickAmountClick(event) {
   txAmountInput.focus();
 }
 
-function handleTxPresetClick(event) {
-  const target = event.target;
-  if (!(target instanceof Element)) {
-    return;
-  }
-  const button = target.closest(".tx-preset-btn");
-  if (!(button instanceof HTMLElement)) {
-    return;
-  }
-  const categoryId = button.dataset.categoryId;
-  if (!categoryId || !getEnabledCategoryIds().includes(categoryId)) {
-    return;
-  }
-  txCategoryInput.value = categoryId;
-  setTransactionMode("expense");
-  syncTransactionPresetButtonState();
-  txAmountInput.focus();
-}
-
 function handleTopupQuickAmountClick(event) {
   const target = event.currentTarget;
   if (!(target instanceof HTMLElement)) {
@@ -2796,35 +2774,6 @@ function refreshCategorySelectors() {
     budgetCategoryInput.value = enabled[0];
   }
   parentTxFilterCategoryInput.value = filterCurrent === "all" || all.includes(filterCurrent) ? filterCurrent : "all";
-  renderTransactionPresetButtons(enabled);
-}
-
-function renderTransactionPresetButtons(enabledCategoryIds = getEnabledCategoryIds()) {
-  if (!txPresetContainer) {
-    return;
-  }
-  txPresetContainer.innerHTML = enabledCategoryIds
-    .map(
-      (categoryId) =>
-        `<button type="button" class="tx-preset-btn" data-category-id="${categoryId}">${getCategoryEmoji(
-          categoryId
-        )} ${escapeHtml(humanCategory(categoryId))} uitgave</button>`
-    )
-    .join("");
-  syncTransactionPresetButtonState();
-}
-
-function syncTransactionPresetButtonState() {
-  if (!txPresetContainer) {
-    return;
-  }
-  const selectedCategory = txCategoryInput?.value;
-  txPresetContainer.querySelectorAll(".tx-preset-btn").forEach((button) => {
-    if (!(button instanceof HTMLElement)) {
-      return;
-    }
-    button.classList.toggle("active", button.dataset.categoryId === selectedCategory);
-  });
 }
 
 function ensureTransactionCategorySelectable(categoryId) {
