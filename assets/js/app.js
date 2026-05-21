@@ -63,7 +63,7 @@ function createDefaultState() {
         autoCoachEnabled: true,
         sensitivity: "normal",
         parentMessages: {
-          [SOLO_OWNER]: { text: "", expiresAt: null },
+          [SOLO_OWNER]: { text: "", expiresAt: null, readAt: null },
         },
       },
       appMode: "solo",
@@ -93,8 +93,8 @@ function createDefaultState() {
       autoCoachEnabled: true,
       sensitivity: "normal",
       parentMessages: {
-        mama: { text: "", expiresAt: null },
-        papa: { text: "", expiresAt: null },
+        mama: { text: "", expiresAt: null, readAt: null },
+        papa: { text: "", expiresAt: null, readAt: null },
       },
     },
     syncRevision: 0,
@@ -565,6 +565,7 @@ const newPinInput = document.getElementById("newPinInput");
 const confirmPinInput = document.getElementById("confirmPinInput");
 const changePinMessageEl = document.getElementById("changePinMessage");
 const parentCoachSummaryEl = document.getElementById("parentCoachSummary");
+const parentReadAlertsEl = document.getElementById("parentReadAlerts");
 const parentMessageForm = document.getElementById("parentMessageForm");
 const parentMessageInput = document.getElementById("parentMessageInput");
 const parentMessageDaysInput = document.getElementById("parentMessageDays");
@@ -670,6 +671,7 @@ async function init() {
     resetAllData();
   });
 
+  coachAlertsEl.addEventListener("click", handleCoachAlertClick);
   toggleDetailsBtn.addEventListener("click", () => {
     const isHidden = extraInsightsEl.classList.toggle("hidden");
     setDetailsButtonText(isHidden);
@@ -903,6 +905,7 @@ async function init() {
       state.coachSettings.parentMessages[session.loggedInParent] = {
         text: message,
         expiresAt: expiry.toISOString(),
+        readAt: null,
       };
     }
     saveState();
@@ -914,6 +917,7 @@ async function init() {
       true
     );
     renderCoachAlerts();
+    renderParentReadAlerts();
     renderParentCoachSummary();
   });
 
@@ -1106,6 +1110,11 @@ function setParentPanelOpen(isOpen) {
   if (lenaViewEl) {
     lenaViewEl.setAttribute("data-parent-open", isOpen ? "true" : "false");
   }
+  if (isOpen) {
+    renderParentReadAlerts();
+  } else if (parentReadAlertsEl) {
+    parentReadAlertsEl.innerHTML = "";
+  }
 }
 
 function setDetailsButtonText(isHidden) {
@@ -1162,6 +1171,7 @@ function render() {
   renderClearOverview(categoryData);
   renderSpeedRings();
   renderCoachAlerts();
+  renderParentReadAlerts();
   renderParentCoachSummary();
   renderParentMiniDashboard(categoryData);
   renderAutoRenewOverview();
@@ -1375,12 +1385,62 @@ function renderCoachAlerts() {
       alert.showCoachTag === false ? "no-coach-tag" : ""
     }`;
     const coachText = alert.showCoachTag === false ? alert.text : personalizeAutomaticCoachText(alert.text);
+    const ackHtml = alert.parentKey ? renderCoachAckHtml(alert.parentKey) : "";
     item.innerHTML = `
       <p class="coach-title">${alert.title}</p>
       <p class="coach-text">${coachText}</p>
+      ${ackHtml}
     `;
     coachAlertsEl.appendChild(item);
   });
+}
+
+function renderCoachAckHtml(parentKey) {
+  const entry = state.coachSettings.parentMessages?.[parentKey];
+  if (!entry?.text) {
+    return "";
+  }
+  if (entry.readAt) {
+    return `
+      <div class="coach-ack coach-ack-done" aria-live="polite">
+        <button type="button" class="coach-thumbs-btn is-active" disabled aria-pressed="true" aria-label="Bericht gelezen">👍</button>
+        <p class="coach-ack-hint coach-ack-hint-done">${IS_SOLO_MODE ? "We weten dat je het hebt gelezen 💜" : "Mama en papa weten dat je het hebt gelezen 💜"}</p>
+      </div>
+    `;
+  }
+  return `
+    <div class="coach-ack">
+      <button type="button" class="coach-thumbs-btn" data-coach-ack-parent="${parentKey}" aria-label="Bericht gelezen markeren">👍</button>
+      <p class="coach-ack-hint">Geef een duim als je het gelezen hebt — dan weten ${IS_SOLO_MODE ? "we" : "mama en papa"} dat je het gezien hebt 💜</p>
+    </div>
+  `;
+}
+
+function handleCoachAlertClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  const button = target.closest("[data-coach-ack-parent]");
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  const parentKey = button.dataset.coachAckParent;
+  if (!parentKey) {
+    return;
+  }
+  acknowledgeParentMessage(parentKey);
+}
+
+function acknowledgeParentMessage(parentKey) {
+  const entry = state.coachSettings.parentMessages?.[parentKey];
+  if (!entry?.text || entry.readAt) {
+    return;
+  }
+  entry.readAt = new Date().toISOString();
+  saveState();
+  renderCoachAlerts();
+  renderParentReadAlerts();
 }
 
 function buildAutomaticCoachAlerts() {
@@ -1573,6 +1633,7 @@ function buildParentMessageAlerts() {
         title: "💌 Herinnering",
         text: escapeHtml(messages[SOLO_OWNER].text),
         showCoachTag: false,
+        parentKey: SOLO_OWNER,
       });
     }
     return alerts;
@@ -1583,6 +1644,7 @@ function buildParentMessageAlerts() {
       title: "💌 Bericht van mama",
       text: escapeHtml(messages.mama.text),
       showCoachTag: false,
+      parentKey: "mama",
     });
   }
   if (messages.papa?.text) {
@@ -1591,6 +1653,7 @@ function buildParentMessageAlerts() {
       title: "💌 Bericht van papa",
       text: escapeHtml(messages.papa.text),
       showCoachTag: false,
+      parentKey: "papa",
     });
   }
   return alerts;
@@ -1647,6 +1710,40 @@ function renderParentCoachSummary() {
   `;
 }
 
+function renderParentReadAlerts() {
+  if (!parentReadAlertsEl || IS_SOLO_MODE) {
+    if (parentReadAlertsEl) {
+      parentReadAlertsEl.innerHTML = "";
+    }
+    return;
+  }
+  if (!session.loggedInParent || parentPanel.classList.contains("hidden")) {
+    parentReadAlertsEl.innerHTML = "";
+    return;
+  }
+
+  pruneExpiredParentMessages();
+  const parentKey = session.loggedInParent === "papa" ? "papa" : "mama";
+  const entry = state.coachSettings.parentMessages?.[parentKey];
+  if (!entry?.text || !entry.readAt) {
+    parentReadAlertsEl.innerHTML = "";
+    return;
+  }
+
+  const readLabel = formatMessageReadStatus(entry);
+  const parentLabel = parentKey === "mama" ? "Mama" : "Papa";
+  parentReadAlertsEl.innerHTML = `
+    <article class="parent-read-alert" role="status">
+      <div class="parent-read-alert-icon" aria-hidden="true">👍</div>
+      <div class="parent-read-alert-body">
+        <strong>${CHILD_NAME} heeft je boodschap gelezen!</strong>
+        <p>${readLabel.replace(/^👍\s*/, "")}</p>
+      </div>
+      <span class="parent-read-alert-badge">${parentLabel}</span>
+    </article>
+  `;
+}
+
 function hydrateParentCoachForm() {
   if (!session.loggedInParent) {
     parentMessageInput.value = "";
@@ -1682,13 +1779,29 @@ function pruneExpiredParentMessages() {
       return;
     }
     if (new Date(entry.expiresAt).getTime() < nowMs) {
-      state.coachSettings.parentMessages[parent] = { text: "", expiresAt: null };
+      state.coachSettings.parentMessages[parent] = { text: "", expiresAt: null, readAt: null };
       changed = true;
     }
   });
   if (changed) {
     saveState();
   }
+}
+
+function formatMessageReadStatus(entry) {
+  if (!entry?.text) {
+    return "—";
+  }
+  if (!entry.readAt) {
+    return "nog niet gelezen";
+  }
+  const readDate = new Date(entry.readAt);
+  if (Number.isNaN(readDate.getTime())) {
+    return "nog niet gelezen";
+  }
+  const day = readDate.toLocaleDateString("nl-BE", { day: "numeric", month: "short" });
+  const time = readDate.toLocaleTimeString("nl-BE", { hour: "2-digit", minute: "2-digit" });
+  return `👍 gelezen op ${day} om ${time}`;
 }
 
 function formatMessageExpiry(expiresAt) {
@@ -3286,6 +3399,7 @@ function mergeParentMessageEntry(parsedEntry, baseEntry) {
   return {
     text: parsedEntry?.text ?? base.text ?? "",
     expiresAt: parsedEntry?.expiresAt ?? base.expiresAt ?? null,
+    readAt: parsedEntry?.readAt ?? base.readAt ?? null,
   };
 }
 
