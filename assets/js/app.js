@@ -1361,7 +1361,8 @@ function renderSpeedRings() {
     .map((category) => {
       const usage = getCurrentMonthUsage(category);
       const speedRatio = elapsedRatio > 0 ? usage.usedRatio / elapsedRatio : 0;
-      const fill = `${Math.min(speedRatio * 100, 100).toFixed(0)}%`;
+      const usedPercent = Math.min(Math.max(usage.usedRatio * 100, 0), 100);
+      const fill = `${usedPercent.toFixed(0)}%`;
       const mood = getSpeedMood(speedRatio);
       const paceText = mood === "slow" ? "rustig" : mood === "fast" ? "snel" : "on track";
 

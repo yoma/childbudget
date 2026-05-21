@@ -518,7 +518,13 @@ body {
   width: 66px;
   height: 66px;
   border-radius: 50%;
-  background: conic-gradient(var(--ring-accent) var(--fill), #ece6f6 0);
+  background: conic-gradient(
+    from -90deg,
+    var(--ring-accent) 0deg,
+    var(--ring-accent) var(--fill),
+    #ece6f6 var(--fill),
+    #ece6f6 360deg
+  );
   display: grid;
   place-items: center;
 }
