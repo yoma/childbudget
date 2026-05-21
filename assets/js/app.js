@@ -417,6 +417,7 @@ function applySoloModeDom() {
     .querySelector('.admin-nav-btn[data-target="parentDashboardSection"]')
     ?.classList.add("hidden");
   parentTxFilterParentInput?.closest("label")?.classList.add("hidden");
+  txFundingLabel?.classList.add("hidden");
 }
 
 async function resolveSoloBudgetUsageDecision({
@@ -544,8 +545,12 @@ const txTopupDetails = document.getElementById("txTopupDetails");
 const txAmountInput = document.getElementById("txAmount");
 const txAmountModeHint = document.getElementById("txAmountModeHint");
 const txNoteInput = document.getElementById("txNote");
+const txFundingLabel = document.getElementById("txFundingLabel");
+const txFundingModeInput = document.getElementById("txFundingMode");
+const txFundingHintEl = document.getElementById("txFundingHint");
 const txSubmitBtn = document.getElementById("txSubmitBtn");
 const cancelTxEditBtn = document.getElementById("cancelTxEditBtn");
+const txPresetButtons = document.querySelectorAll(".tx-preset-btn");
 const txQuickAmountButtons = document.querySelectorAll(".tx-quick-btn");
 const txTopupButtons = document.querySelectorAll(".tx-topup-btn");
 const transactionListEl = document.getElementById("transactionList");
@@ -691,10 +696,16 @@ async function init() {
   txTopupButtons.forEach((button) => {
     button.addEventListener("click", handleTopupQuickAmountClick);
   });
+  txPresetButtons.forEach((button) => {
+    button.addEventListener("click", handleTxPresetClick);
+  });
+  txFundingModeInput?.addEventListener("change", syncTxFundingModeUi);
+  txCategoryInput?.addEventListener("change", syncTxFundingModeUi);
   categoryConfigForm?.addEventListener("submit", handleCategoryConfigSubmit);
 
   applyInitialViewMode();
   refreshCategorySelectors();
+  syncTxFundingFieldVisibility();
 
   pinForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -770,6 +781,7 @@ async function init() {
         month,
         requestedAmount: rawAmount,
         actingParent: session.loggedInParent,
+        fundingMode: normalizeTxFundingMode(txFundingModeInput?.value),
         excludeTxId: txEditState.editingId ?? null,
         excludeLinkedTransferIds: Array.isArray(editingTx?.linkedTransferIds)
           ? editingTx.linkedTransferIds
@@ -794,6 +806,7 @@ async function init() {
       existing.amount = amount;
       existing.note = txNoteInput.value.trim();
       existing.budgetUsage = budgetUsage;
+      existing.fundingMode = normalizeTxFundingMode(txFundingModeInput?.value);
       existing.borrowFromParent = null;
       existing.borrowAmount = 0;
       delete existing.kledingSub;
@@ -824,6 +837,7 @@ async function init() {
         note: txNoteInput.value.trim(),
         createdBy: session.loggedInParent,
         budgetUsage,
+        fundingMode: normalizeTxFundingMode(txFundingModeInput?.value),
         linkedTransferIds,
       };
       state.transactions.push(newTx);
@@ -1115,6 +1129,7 @@ function renderLoggedInParent() {
   setChangePinMessage("", true);
   hydrateParentCoachForm();
   setParentMessageStatus("", true);
+  syncTxFundingFieldVisibility();
 }
 
 function setChangePinMessage(message, isSuccess) {
@@ -1753,20 +1768,6 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
         return;
       }
 
-      let toSpend = Math.abs(tx.amount);
-      const ownerPositiveBuckets = buckets
-        .filter((bucket) => bucket.owner === owner && bucket.amount > 0)
-        .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
-
-      ownerPositiveBuckets.forEach((bucket) => {
-        if (toSpend <= 0) {
-          return;
-        }
-        const used = Math.min(bucket.amount, toSpend);
-        bucket.amount -= used;
-        toSpend -= used;
-      });
-
       const usageEntries = Array.isArray(tx.budgetUsage)
         ? tx.budgetUsage
         : tx.borrowAmount > 0 &&
@@ -1775,28 +1776,66 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
               tx.borrowFromParent === SOLO_OWNER)
           ? [{ fromParent: tx.borrowFromParent, fromCategory: category, amount: tx.borrowAmount }]
           : [];
+      const fundingMode = normalizeTxFundingMode(tx.fundingMode);
+      let toSpend = Math.abs(tx.amount);
 
-      usageEntries
-        .filter((entry) => entry.fromCategory === category && entry.fromParent !== owner)
-        .forEach((entry) => {
+      const spendFromParentBuckets = (fromParent, requestedAmount) => {
+        let requested = requestedAmount;
+        const positiveBuckets = buckets
+          .filter((bucket) => bucket.owner === fromParent && bucket.amount > 0)
+          .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
+        positiveBuckets.forEach((bucket) => {
+          if (requested <= 0) {
+            return;
+          }
+          const used = Math.min(bucket.amount, requested);
+          bucket.amount -= used;
+          requested -= used;
+        });
+        return requested;
+      };
+
+      if (fundingMode === "other-same" || fundingMode === "manual") {
+        usageEntries
+          .filter((entry) => entry.fromCategory === category)
+          .forEach((entry) => {
+            if (toSpend <= 0) {
+              return;
+            }
+            const fromParent =
+              entry.fromParent === "papa" ? "papa" : entry.fromParent === "mama" ? "mama" : owner;
+            const entryAmount = Math.min(toSpend, Number(entry.amount) || 0);
+            const leftover = spendFromParentBuckets(fromParent, entryAmount);
+            toSpend -= entryAmount - leftover;
+          });
+      } else {
+        const ownerPositiveBuckets = buckets
+          .filter((bucket) => bucket.owner === owner && bucket.amount > 0)
+          .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
+
+        ownerPositiveBuckets.forEach((bucket) => {
           if (toSpend <= 0) {
             return;
           }
-          let requested = Math.min(toSpend, Number(entry.amount) || 0);
-          const otherPositiveBuckets = buckets
-            .filter((bucket) => bucket.owner === entry.fromParent && bucket.amount > 0)
-            .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
+          const used = Math.min(bucket.amount, toSpend);
+          bucket.amount -= used;
+          toSpend -= used;
+        });
 
-          otherPositiveBuckets.forEach((bucket) => {
-            if (requested <= 0) {
+        usageEntries
+          .filter((entry) => entry.fromCategory === category && entry.fromParent !== owner)
+          .forEach((entry) => {
+            if (toSpend <= 0) {
               return;
             }
-            const used = Math.min(bucket.amount, requested);
-            bucket.amount -= used;
-            requested -= used;
+            const entryAmount = Math.min(toSpend, Number(entry.amount) || 0);
+            const leftover = spendFromParentBuckets(
+              entry.fromParent === "papa" ? "papa" : "mama",
+              entryAmount
+            );
+            toSpend -= entryAmount - leftover;
           });
-          toSpend -= Math.min(toSpend, (Number(entry.amount) || 0) - requested);
-        });
+      }
 
       if (toSpend > 0) {
         addOwnedBucket(buckets, month, owner, -toSpend);
@@ -1812,11 +1851,82 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
   return split;
 }
 
+const TX_FUNDING_MODES = ["auto", "other-same", "manual"];
+
+function normalizeTxFundingMode(value) {
+  return TX_FUNDING_MODES.includes(value) ? value : "auto";
+}
+
+function getOtherParentKey(parent) {
+  return parent === "mama" ? "papa" : "mama";
+}
+
+function inferTxFundingMode(tx) {
+  if (!tx || tx.amount >= 0) {
+    return "auto";
+  }
+  if (tx.fundingMode && TX_FUNDING_MODES.includes(tx.fundingMode)) {
+    return tx.fundingMode;
+  }
+  const expense = Math.abs(tx.amount);
+  const usageEntries = Array.isArray(tx.budgetUsage)
+    ? tx.budgetUsage.filter((entry) => Number(entry.amount) > 0)
+    : [];
+  if (usageEntries.length === 0) {
+    return "auto";
+  }
+  const actor = tx.createdBy === "papa" ? "papa" : "mama";
+  const otherParent = getOtherParentKey(actor);
+  if (
+    usageEntries.length === 1 &&
+    usageEntries[0].fromParent === otherParent &&
+    usageEntries[0].fromCategory === tx.category &&
+    Math.abs(Number(usageEntries[0].amount) - expense) <= 0.02
+  ) {
+    return "other-same";
+  }
+  return "manual";
+}
+
+function syncTxFundingModeUi() {
+  if (!txFundingModeInput || IS_SOLO_MODE) {
+    return;
+  }
+  const actingParent = session.loggedInParent === "papa" ? "papa" : session.loggedInParent === "mama" ? "mama" : null;
+  const otherParent = actingParent ? getOtherParentKey(actingParent) : "papa";
+  const category = txCategoryInput?.value ?? "kleding";
+  const otherOption = txFundingModeInput.querySelector('option[value="other-same"]');
+  if (otherOption) {
+    otherOption.textContent = `Volledig van ${otherParent} · ${humanCategory(category).toLowerCase()}`;
+  }
+  const hints = {
+    auto: "Eerst jouw budget in deze categorie; bij tekort kies je een andere bron.",
+    "other-same": `Het volledige bedrag komt van ${otherParent} (${humanCategory(category).toLowerCase()}), ook als jij nog saldo hebt.`,
+    manual: "Jij kiest zelf welke budgetten (eigen, andere ouder of andere categorie) worden gebruikt.",
+  };
+  const mode = normalizeTxFundingMode(txFundingModeInput.value);
+  if (txFundingHintEl) {
+    txFundingHintEl.textContent = hints[mode] ?? hints.auto;
+  }
+}
+
+function syncTxFundingFieldVisibility() {
+  if (!txFundingLabel) {
+    return;
+  }
+  const show = !IS_SOLO_MODE && !txTopupArmed && Boolean(session.loggedInParent);
+  txFundingLabel.classList.toggle("hidden", !show);
+  if (show) {
+    syncTxFundingModeUi();
+  }
+}
+
 async function resolveBudgetUsageDecision({
   category,
   month,
   requestedAmount,
   actingParent,
+  fundingMode = "auto",
   excludeTxId,
   excludeLinkedTransferIds = [],
 }) {
@@ -1832,20 +1942,37 @@ async function resolveBudgetUsageDecision({
   if (actingParent !== "mama" && actingParent !== "papa") {
     return { usage: [], cancelledByUser: false };
   }
-  const otherParent = actingParent === "mama" ? "papa" : "mama";
+  const mode = normalizeTxFundingMode(fundingMode);
+  const otherParent = getOtherParentKey(actingParent);
   const otherCategories = getEnabledCategoryIds().filter((item) => item !== category);
   const excludeTxIds = [excludeTxId, ...excludeLinkedTransferIds].filter(Boolean);
 
   const sameCategorySplit = getParentRemainingSplit(category, month, { excludeTxIds });
   let remaining = requestedAmount;
-  const ownSameCategory = Math.max(0, sameCategorySplit[actingParent] ?? 0);
-  remaining = Math.max(0, remaining - ownSameCategory);
   const usage = [];
 
-  while (remaining > 0) {
+  if (mode === "auto") {
+    const ownSameCategory = Math.max(0, sameCategorySplit[actingParent] ?? 0);
+    remaining = Math.max(0, remaining - ownSameCategory);
+  } else if (mode === "other-same") {
+    const otherAvailable = Math.max(0, sameCategorySplit[otherParent] ?? 0);
+    const fromOther = Math.min(remaining, otherAvailable);
+    if (fromOther > 0.004) {
+      usage.push({
+        fromParent: otherParent,
+        fromCategory: category,
+        amount: fromOther,
+      });
+      remaining -= fromOther;
+    }
+  }
+
+  while (remaining > 0.004) {
     // Alle bronnen tegelijk (geen aparte "eigen categorieën eerst"-fase), zodat bv. papa cosmetica
     // zichtbaar blijft zolang mama nog zakgeld/kleding heeft.
+    const includeOwnSameCategory = mode === "manual" || mode === "other-same";
     const candidateDefs = [
+      ...(includeOwnSameCategory ? [{ fromParent: actingParent, fromCategory: category }] : []),
       { fromParent: otherParent, fromCategory: category },
       ...otherCategories.map((item) => ({ fromParent: actingParent, fromCategory: item })),
       ...otherCategories.map((item) => ({ fromParent: otherParent, fromCategory: item })),
@@ -1884,6 +2011,7 @@ async function resolveBudgetUsageDecision({
       category,
       remaining,
       options,
+      fundingMode: mode,
     });
     if (!selected) {
       if (totalPossible >= remaining) {
@@ -1920,26 +2048,34 @@ function handleBudgetSourceOptionClick(event) {
   renderBudgetSourceOptions();
 }
 
-async function chooseBudgetSourceOption({ actingParent, category, remaining, options }) {
+async function chooseBudgetSourceOption({ actingParent, category, remaining, options, fundingMode = "auto" }) {
   if (!budgetSourceDialog || !budgetSourceMessageEl || !budgetSourceOptionsEl) {
     return options[0] ?? null;
   }
+  const mode = normalizeTxFundingMode(fundingMode);
   const selectable = options.filter((option) => option.selectable);
   const sameCategoryOtherParent = selectable.find(
     (option) => option.fromParent !== actingParent && option.fromCategory === category
   );
+  const sameCategoryOwn = selectable.find(
+    (option) => option.fromParent === actingParent && option.fromCategory === category
+  );
   const recommended =
-    sameCategoryOtherParent ??
-    [...selectable].sort((a, b) => b.available - a.available)[0] ??
-    selectable[0] ??
-    options[0];
+    mode === "other-same"
+      ? sameCategoryOtherParent
+      : mode === "manual"
+        ? sameCategoryOwn ?? sameCategoryOtherParent
+        : sameCategoryOtherParent ??
+          [...selectable].sort((a, b) => b.available - a.available)[0] ??
+          selectable[0] ??
+          options[0];
   budgetSourceChoiceState.options = options.map((option, index) => ({
     ...option,
     id: `${option.fromParent}-${option.fromCategory}-${index}`,
   }));
   const recommendedIndex = budgetSourceChoiceState.options.findIndex(
     (option) =>
-      option.fromParent === recommended.fromParent && option.fromCategory === recommended.fromCategory
+      option.fromParent === recommended?.fromParent && option.fromCategory === recommended?.fromCategory
   );
   budgetSourceChoiceState.recommendedId =
     recommendedIndex >= 0
@@ -1948,10 +2084,17 @@ async function chooseBudgetSourceOption({ actingParent, category, remaining, opt
   budgetSourceChoiceState.selectedId = budgetSourceChoiceState.recommendedId;
 
   const parentLabel = IS_SOLO_MODE ? "jouw" : actingParent === "mama" ? "mama" : "papa";
-  const suffix = IS_SOLO_MODE
-    ? " Kies uit een andere categorie."
-    : " Kies waar het vandaan komt (ook dezelfde categorie bij de andere ouder).";
-  budgetSourceMessageEl.textContent = `Tekort op ${parentLabel} ${humanCategory(category).toLowerCase()}: ${currency.format(remaining)}.${suffix}`;
+  const catLabel = humanCategory(category).toLowerCase();
+  if (mode === "manual") {
+    budgetSourceMessageEl.textContent = `Kies budgetbron voor ${currency.format(remaining)} (${catLabel}). Je mag eigen of andere ouder/categorie kiezen.`;
+  } else if (mode === "other-same") {
+    budgetSourceMessageEl.textContent = `Nog ${currency.format(remaining)} te dekken. Kies een aanvullende bron (bv. eigen ${catLabel} of andere categorie).`;
+  } else {
+    const suffix = IS_SOLO_MODE
+      ? " Kies uit een andere categorie."
+      : " Kies waar het vandaan komt (ook dezelfde categorie bij de andere ouder).";
+    budgetSourceMessageEl.textContent = `Tekort op ${parentLabel} ${catLabel}: ${currency.format(remaining)}.${suffix}`;
+  }
   renderBudgetSourceOptions();
   budgetSourceDialog.showModal();
 
@@ -2280,6 +2423,10 @@ function handleParentTransactionAction(event) {
     txTopupArmed = editMode === "topup";
     txAmountInput.value = String(Math.abs(tx.amount));
     txNoteInput.value = tx.note ?? "";
+    if (txFundingModeInput) {
+      txFundingModeInput.value = inferTxFundingMode(tx);
+    }
+    syncTxFundingFieldVisibility();
     txSubmitBtn.textContent = "Wijziging opslaan";
     cancelTxEditBtn.classList.remove("hidden");
     txAmountInput.focus();
@@ -2352,6 +2499,10 @@ function resetTransactionFormState() {
   txTopupArmed = false;
   txAmountInput.value = "";
   txNoteInput.value = "";
+  if (txFundingModeInput) {
+    txFundingModeInput.value = "auto";
+  }
+  syncTxFundingFieldVisibility();
 }
 
 function handleQuickAmountClick(event) {
@@ -2372,6 +2523,31 @@ function handleQuickAmountClick(event) {
   setTransactionMode("expense");
   txAmountInput.value = String(numeric);
   txAmountInput.focus();
+}
+
+function handleTxPresetClick(event) {
+  const target = event.currentTarget;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  const preset = target.dataset.preset;
+  if (preset === "kleding-expense") {
+    if (!getEnabledCategoryIds().includes("kleding")) {
+      return;
+    }
+    txCategoryInput.value = "kleding";
+    setTransactionMode("expense");
+    txAmountInput.focus();
+    return;
+  }
+  if (preset === "zakgeld-expense") {
+    if (!getEnabledCategoryIds().includes("zakgeld")) {
+      return;
+    }
+    txCategoryInput.value = "zakgeld";
+    setTransactionMode("expense");
+    txAmountInput.focus();
+  }
 }
 
 function handleTopupQuickAmountClick(event) {
@@ -2408,6 +2584,7 @@ function setTransactionMode(mode) {
   if (isTopup) {
     txTopupDetails.open = true;
   }
+  syncTxFundingFieldVisibility();
 }
 
 function createLinkedCategoryTransfers({ date, month, targetCategory, usage }) {
@@ -2774,6 +2951,24 @@ function refreshCategorySelectors() {
     budgetCategoryInput.value = enabled[0];
   }
   parentTxFilterCategoryInput.value = filterCurrent === "all" || all.includes(filterCurrent) ? filterCurrent : "all";
+
+  document.querySelectorAll(".tx-preset-btn").forEach((button) => {
+    if (!(button instanceof HTMLElement)) {
+      return;
+    }
+    const preset = button.dataset.preset;
+    const linkedCategory =
+      preset === "kleding-expense" ? "kleding" : preset === "zakgeld-expense" ? "zakgeld" : null;
+    if (!linkedCategory) {
+      return;
+    }
+    const isEnabled = enabled.includes(linkedCategory);
+    button.classList.toggle("hidden", !isEnabled);
+    button.classList.toggle("tx-preset-hidden", !isEnabled);
+    button.disabled = !isEnabled;
+    button.setAttribute("aria-hidden", String(!isEnabled));
+    button.style.display = isEnabled ? "" : "none";
+  });
 }
 
 function ensureTransactionCategorySelectable(categoryId) {
@@ -3119,11 +3314,6 @@ function mergeCoachSettings(parsedCoach, baseCoach) {
 
 function mergeParsedIntoBase(parsed) {
   const base = structuredClone(defaultState);
-  const baseCoachSettings = base.coachSettings ?? {
-    autoCoachEnabled: true,
-    sensitivity: "normal",
-    parentMessages: {},
-  };
 
   if (parsed.pin && !parsed.pins) {
     base.pins = IS_SOLO_MODE
@@ -3141,7 +3331,7 @@ function mergeParsedIntoBase(parsed) {
       base.recurringIntervalMonths,
       parsed.recurringIntervalMonths
     ),
-    coachSettings: mergeCoachSettings(parsed.coachSettings, baseCoachSettings),
+    coachSettings: mergeCoachSettings(parsed.coachSettings, base.coachSettings),
   };
   delete merged.kledingSubSplitEnabled;
   delete merged.kledingSubSplits;

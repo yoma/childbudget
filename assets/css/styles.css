@@ -1102,6 +1102,13 @@ body {
   border-color: #f1dfc4;
 }
 
+.tx-funding-hint {
+  display: block;
+  margin-top: 0.28rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
 .tx-preset-btn {
   border: 1px solid #ded0ef;
   background: linear-gradient(135deg, #fdf9ff, #f7f0ff);

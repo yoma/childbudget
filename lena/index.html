@@ -162,6 +162,19 @@
                 <option value="topup">Bijstorting (+)</option>
               </select>
               <p id="txModeLabel" class="tx-mode-label wide">Standaard: uitgave</p>
+              <div class="tx-presets wide" aria-label="Snelle categorie presets">
+                <button type="button" class="tx-preset-btn" data-preset="kleding-expense">👗 Kleding uitgave</button>
+                <button type="button" class="tx-preset-btn" data-preset="zakgeld-expense">💜 Zakgeld uitgave</button>
+              </div>
+              <label id="txFundingLabel" class="wide">
+                <span>Betaald van</span>
+                <select id="txFundingMode">
+                  <option value="auto">Automatisch (eerst mijn budget)</option>
+                  <option value="other-same">Volledig budget van andere ouder</option>
+                  <option value="manual">Zelf kiezen (alle bronnen)</option>
+                </select>
+                <small id="txFundingHint" class="tx-funding-hint muted"></small>
+              </label>
               <label>
                 <span>Bedrag (€) (zonder -)</span>
                 <input type="number" step="0.01" min="0.01" id="txAmount" placeholder="bv. 25,00" required />
@@ -358,7 +371,7 @@
       </div>
     </section>
 
-    <script src="../assets/js/supabase-config.js?v=2026-05-08-1615"></script>
-    <script src="../assets/js/app.js?v=2026-05-08-1615"></script>
+    <script src="../assets/js/supabase-config.js?v=2026-05-08-1625"></script>
+    <script src="../assets/js/app.js?v=2026-05-08-1625"></script>
   </body>
 </html>
