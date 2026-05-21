@@ -514,28 +514,25 @@ body {
 }
 
 .speed-ring {
-  --fill: 0%;
   width: 66px;
   height: 66px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from -90deg,
-    var(--ring-accent) 0deg,
-    var(--ring-accent) var(--fill),
-    #ece6f6 var(--fill),
-    #ece6f6 360deg
-  );
   display: grid;
   place-items: center;
+  position: relative;
 }
 
-.speed-ring::before {
-  content: "";
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: #fff;
-  border: 1px solid #ece3f7;
+.speed-ring-svg {
+  width: 66px;
+  height: 66px;
+  display: block;
+}
+
+.speed-ring-track {
+  stroke: #ece6f6;
+}
+
+.speed-ring-progress {
+  transition: stroke-dasharray 220ms ease;
 }
 
 .speed-ring-value {

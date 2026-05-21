@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-08-1625";
+const APP_BUILD_VERSION = "2026-05-21-1400";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -1352,6 +1352,28 @@ function renderTopAvailability(categoryData) {
     .join("");
 }
 
+function renderSpeedRingSvg(usedPercent, accentColor) {
+  const pct = Math.min(Math.max(usedPercent, 0), 100);
+  return `
+    <svg class="speed-ring-svg" viewBox="0 0 44 44" aria-hidden="true">
+      <circle class="speed-ring-track" cx="22" cy="22" r="18" fill="none" stroke-width="4" />
+      <circle
+        class="speed-ring-progress"
+        cx="22"
+        cy="22"
+        r="18"
+        fill="none"
+        stroke="${accentColor}"
+        stroke-width="4"
+        pathLength="100"
+        stroke-dasharray="${pct} 100"
+        stroke-linecap="round"
+        transform="rotate(-90 22 22)"
+      />
+    </svg>
+  `;
+}
+
 function renderSpeedRings() {
   const todayDate = new Date();
   const elapsedRatio = todayDate.getDate() / new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
@@ -1362,14 +1384,14 @@ function renderSpeedRings() {
       const usage = getCurrentMonthUsage(category);
       const speedRatio = elapsedRatio > 0 ? usage.usedRatio / elapsedRatio : 0;
       const usedPercent = Math.min(Math.max(usage.usedRatio * 100, 0), 100);
-      const fill = `${usedPercent.toFixed(0)}%`;
       const mood = getSpeedMood(speedRatio);
       const paceText = mood === "slow" ? "rustig" : mood === "fast" ? "snel" : "on track";
 
       const accentColor = getCategoryColor(category);
+      const safeCategoryClass = `cat-${String(category).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
       return `
-          <div class="speed-ring-card ${category}" style="--ring-accent:${accentColor};">
-          <div class="speed-ring" style="--fill:${fill};"></div>
+          <div class="speed-ring-card ${safeCategoryClass}" style="--ring-accent:${accentColor};">
+          <div class="speed-ring">${renderSpeedRingSvg(usedPercent, accentColor)}</div>
           <div class="speed-ring-value">${Math.round(usage.usedRatio * 100)}%</div>
           <div class="speed-ring-label">${humanCategory(category)}</div>
           <div class="speed-ring-meta">Tempo: ${paceText}</div>
