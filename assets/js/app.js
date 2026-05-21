@@ -353,10 +353,6 @@ function applySoloModeDom() {
     overviewTag.textContent = "Jouw budget";
   }
 
-  if (openTransactionsBtn) {
-    openTransactionsBtn.textContent = `📋 Recente transacties`;
-  }
-
   const dashTitle = document.querySelector("#parentDashboardSection .card-header h3");
   if (dashTitle) {
     dashTitle.textContent = "Overzicht (deze maand)";
@@ -502,7 +498,7 @@ const appBuildMetaEl = document.getElementById("appBuildMeta");
 const heroEyebrowEl = document.getElementById("heroEyebrow");
 const heroGreetingEl = document.getElementById("heroGreeting");
 const parentMessageLabelEl = document.getElementById("parentMessageLabel");
-const lenaViewEl = document.getElementById("lenaView");
+const childViewEl = document.getElementById("childView");
 const parentModeBtn = document.getElementById("parentModeBtn");
 const parentDialog = document.getElementById("parentDialog");
 const pinForm = document.getElementById("pinForm");
@@ -578,9 +574,9 @@ const autoCoachEnabledInput = document.getElementById("autoCoachEnabled");
 const parentMessageStatusEl = document.getElementById("parentMessageStatus");
 const toggleDetailsBtn = document.getElementById("toggleDetailsBtn");
 const extraInsightsEl = document.getElementById("extraInsights");
-const lenaQuickActionsEl = document.getElementById("lenaQuickActions");
+const childQuickActionsEl = document.getElementById("childQuickActions");
 const openTransactionsBtn = document.getElementById("openTransactionsBtn");
-const lenaTransactionsCardEl = document.getElementById("lenaTransactionsCard");
+const childTransactionsCardEl = document.getElementById("childTransactionsCard");
 const viewMode = urlParams.get("view");
 const mobileParentActionButtons = [
   resetAllDataBtn,
@@ -683,7 +679,7 @@ async function init() {
     const isHidden = extraInsightsEl.classList.toggle("hidden");
     setDetailsButtonText(isHidden);
   });
-  openTransactionsBtn?.addEventListener("click", openLenaTransactionsSection);
+  openTransactionsBtn?.addEventListener("click", openChildTransactionsSection);
   autoRenewOverviewEl.addEventListener("click", handleAutoRenewActionClick);
   parentTxFilterParentInput.addEventListener("change", () => renderTransactions());
   parentTxFilterCategoryInput.addEventListener("change", () => renderTransactions());
@@ -716,7 +712,7 @@ async function init() {
   applyInitialViewMode();
   refreshCategorySelectors();
   syncTxFundingFieldVisibility();
-  syncLenaQuickActionsVisibility();
+  syncChildQuickActionsVisibility();
 
   pinForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1116,39 +1112,39 @@ function setParentPanelOpen(isOpen) {
   parentPanel.classList.toggle("hidden", !isOpen);
   parentPanel.setAttribute("aria-hidden", String(!isOpen));
   document.body.classList.toggle("parent-mode-active", isOpen);
-  if (lenaViewEl) {
-    lenaViewEl.setAttribute("data-parent-open", isOpen ? "true" : "false");
+  if (childViewEl) {
+    childViewEl.setAttribute("data-parent-open", isOpen ? "true" : "false");
   }
   if (isOpen) {
     renderParentReadAlerts();
   } else if (parentReadAlertsEl) {
     parentReadAlertsEl.innerHTML = "";
   }
-  syncLenaQuickActionsVisibility();
+  syncChildQuickActionsVisibility();
 }
 
 function setDetailsButtonText(isHidden) {
   toggleDetailsBtn.textContent = isHidden ? "Toon extra details" : "Verberg extra details";
 }
 
-function openLenaTransactionsSection() {
+function openChildTransactionsSection() {
   if (!extraInsightsEl) {
     return;
   }
   extraInsightsEl.classList.remove("hidden");
   setDetailsButtonText(false);
   window.requestAnimationFrame(() => {
-    const target = lenaTransactionsCardEl ?? document.getElementById("transactionList");
+    const target = childTransactionsCardEl ?? document.getElementById("transactionList");
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
 
-function syncLenaQuickActionsVisibility() {
-  if (!lenaQuickActionsEl) {
+function syncChildQuickActionsVisibility() {
+  if (!childQuickActionsEl) {
     return;
   }
   const hide = document.body.classList.contains("parent-mode-active");
-  lenaQuickActionsEl.classList.toggle("hidden", hide);
+  childQuickActionsEl.classList.toggle("hidden", hide);
 }
 
 function renderLoggedInParent() {

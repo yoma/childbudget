@@ -1307,17 +1307,17 @@ body {
   margin: 0.3rem 0 0.6rem;
 }
 
-.lena-quick-actions {
+.child-quick-actions {
   display: flex;
   justify-content: stretch;
   margin: 0 0 0.65rem;
 }
 
-.lena-quick-actions.hidden {
+.child-quick-actions.hidden {
   display: none;
 }
 
-.lena-quick-action-btn {
+.child-quick-action-btn {
   width: 100%;
   border: 1px solid rgba(141, 69, 204, 0.28);
   border-radius: var(--radius-pill);
@@ -1331,12 +1331,12 @@ body {
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
-.lena-quick-action-btn:hover {
+.child-quick-action-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 12px 28px rgba(141, 69, 204, 0.26);
 }
 
-.lena-quick-action-btn:active {
+.child-quick-action-btn:active {
   transform: translateY(0);
 }
 
@@ -1611,7 +1611,7 @@ body.parent-mode-active {
   overflow: hidden;
 }
 
-body.parent-mode-active #lenaView {
+body.parent-mode-active #childView {
   display: none;
 }
 
