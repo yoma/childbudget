@@ -1307,6 +1307,39 @@ body {
   margin: 0.3rem 0 0.6rem;
 }
 
+.lena-quick-actions {
+  display: flex;
+  justify-content: stretch;
+  margin: 0 0 0.65rem;
+}
+
+.lena-quick-actions.hidden {
+  display: none;
+}
+
+.lena-quick-action-btn {
+  width: 100%;
+  border: 1px solid rgba(141, 69, 204, 0.28);
+  border-radius: var(--radius-pill);
+  padding: 0.72rem 1.1rem;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #4a2f6d;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(246, 237, 255, 0.98));
+  box-shadow: 0 10px 24px rgba(141, 69, 204, 0.2);
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.lena-quick-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(141, 69, 204, 0.26);
+}
+
+.lena-quick-action-btn:active {
+  transform: translateY(0);
+}
+
 dialog {
   border: 0;
   padding: 0;

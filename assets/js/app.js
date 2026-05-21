@@ -353,6 +353,10 @@ function applySoloModeDom() {
     overviewTag.textContent = "Jouw budget";
   }
 
+  if (openTransactionsBtn) {
+    openTransactionsBtn.textContent = `📋 Recente transacties`;
+  }
+
   const dashTitle = document.querySelector("#parentDashboardSection .card-header h3");
   if (dashTitle) {
     dashTitle.textContent = "Overzicht (deze maand)";
@@ -574,6 +578,9 @@ const autoCoachEnabledInput = document.getElementById("autoCoachEnabled");
 const parentMessageStatusEl = document.getElementById("parentMessageStatus");
 const toggleDetailsBtn = document.getElementById("toggleDetailsBtn");
 const extraInsightsEl = document.getElementById("extraInsights");
+const lenaQuickActionsEl = document.getElementById("lenaQuickActions");
+const openTransactionsBtn = document.getElementById("openTransactionsBtn");
+const lenaTransactionsCardEl = document.getElementById("lenaTransactionsCard");
 const viewMode = urlParams.get("view");
 const mobileParentActionButtons = [
   resetAllDataBtn,
@@ -676,6 +683,7 @@ async function init() {
     const isHidden = extraInsightsEl.classList.toggle("hidden");
     setDetailsButtonText(isHidden);
   });
+  openTransactionsBtn?.addEventListener("click", openLenaTransactionsSection);
   autoRenewOverviewEl.addEventListener("click", handleAutoRenewActionClick);
   parentTxFilterParentInput.addEventListener("change", () => renderTransactions());
   parentTxFilterCategoryInput.addEventListener("change", () => renderTransactions());
@@ -708,6 +716,7 @@ async function init() {
   applyInitialViewMode();
   refreshCategorySelectors();
   syncTxFundingFieldVisibility();
+  syncLenaQuickActionsVisibility();
 
   pinForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1115,10 +1124,31 @@ function setParentPanelOpen(isOpen) {
   } else if (parentReadAlertsEl) {
     parentReadAlertsEl.innerHTML = "";
   }
+  syncLenaQuickActionsVisibility();
 }
 
 function setDetailsButtonText(isHidden) {
   toggleDetailsBtn.textContent = isHidden ? "Toon extra details" : "Verberg extra details";
+}
+
+function openLenaTransactionsSection() {
+  if (!extraInsightsEl) {
+    return;
+  }
+  extraInsightsEl.classList.remove("hidden");
+  setDetailsButtonText(false);
+  window.requestAnimationFrame(() => {
+    const target = lenaTransactionsCardEl ?? document.getElementById("transactionList");
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function syncLenaQuickActionsVisibility() {
+  if (!lenaQuickActionsEl) {
+    return;
+  }
+  const hide = document.body.classList.contains("parent-mode-active");
+  lenaQuickActionsEl.classList.toggle("hidden", hide);
 }
 
 function renderLoggedInParent() {
