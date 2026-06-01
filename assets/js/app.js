@@ -584,6 +584,7 @@ const mobileParentActionButtons = [
 ].filter(Boolean);
 const session = { loggedInParent: null };
 const txEditState = { editingId: null };
+const budgetEditState = { parent: null, category: null };
 const budgetSourceChoiceState = {
   options: [],
   selectedId: null,
@@ -738,11 +739,22 @@ async function init() {
       return;
     }
     const month = budgetMonthInput.value;
-    const parent = session.loggedInParent;
+    const parent = normalizeOwnerKey(budgetEditState.parent ?? session.loggedInParent);
     const category = budgetCategoryInput.value;
     const amount = Number(budgetAmountInput.value);
 
     if (!month || !category || Number.isNaN(amount)) {
+      return;
+    }
+
+    if (
+      budgetEditState.parent &&
+      normalizeOwnerKey(budgetEditState.parent) !== normalizeOwnerKey(session.loggedInParent)
+    ) {
+      setParentMessageStatus(
+        `Log in als ${ownerDisplayLabel(budgetEditState.parent).toLowerCase()} om dit auto-bedrag op te slaan.`,
+        false
+      );
       return;
     }
 
@@ -759,6 +771,8 @@ async function init() {
     render();
     budgetAmountInput.value = "";
     budgetAutoRenewInput.checked = false;
+    budgetEditState.parent = null;
+    budgetEditState.category = null;
     syncBudgetRecurringIntervalVisibility();
   });
 
@@ -1260,6 +1274,7 @@ function renderAutoRenewOverview() {
     return;
   }
 
+  const actingParent = getSessionOwner();
   autoRenewOverviewEl.innerHTML = entries
     .map((entry) => {
       const parentLabel = entry.parent === "mama" ? "Mama" : "Papa";
@@ -1267,11 +1282,12 @@ function renderAutoRenewOverview() {
       const interval = getRecurringIntervalFor(entry.parent, entry.category);
       const intervalHint =
         interval <= 1 ? "elke maand" : `om de ${interval} maanden (vanaf startmaand)`;
-      return `
-        <div class="auto-renew-row">
-          <span>${parentLabel} · ${catLabel} <span class="muted">· ${intervalHint}</span></span>
-          <strong>${currency.format(entry.amount)}</strong>
-          <div class="auto-renew-actions">
+      const canManage = actingParent === entry.parent;
+      const manageHint = canManage
+        ? ""
+        : `<span class="muted"> · log in als ${parentLabel.toLowerCase()} om te wijzigen</span>`;
+      const actionButtons = canManage
+        ? `
             <button
               type="button"
               class="auto-renew-btn"
@@ -1287,7 +1303,13 @@ function renderAutoRenewOverview() {
               data-parent="${entry.parent}"
               data-category="${entry.category}"
             >Stoppen</button>
-          </div>
+          `
+        : "";
+      return `
+        <div class="auto-renew-row">
+          <span>${parentLabel} · ${catLabel} <span class="muted">· ${intervalHint}</span>${manageHint}</span>
+          <strong>${currency.format(entry.amount)}</strong>
+          <div class="auto-renew-actions">${actionButtons}</div>
         </div>
       `;
     })
@@ -1305,12 +1327,24 @@ function handleAutoRenewActionClick(event) {
   if (!action || !parent || !category) {
     return;
   }
+  if (!session.loggedInParent) {
+    return;
+  }
+  if (normalizeOwnerKey(parent) !== getSessionOwner()) {
+    setParentMessageStatus(
+      `Log in als ${ownerDisplayLabel(parent).toLowerCase()} om dit auto-bedrag te beheren.`,
+      false
+    );
+    return;
+  }
 
   if (action === "stop") {
-    state.recurringBudgets[parent][category] = 0;
-    state.recurringStartMonth[parent][category] = null;
-    if (state.recurringIntervalMonths?.[parent]) {
-      delete state.recurringIntervalMonths[parent][category];
+    delete state.recurringBudgets?.[parent]?.[category];
+    delete state.recurringStartMonth?.[parent]?.[category];
+    delete state.recurringIntervalMonths?.[parent]?.[category];
+    if (budgetEditState.category === category && budgetEditState.parent === parent) {
+      budgetEditState.parent = null;
+      budgetEditState.category = null;
     }
     saveState();
     render();
@@ -1319,6 +1353,10 @@ function handleAutoRenewActionClick(event) {
 
   if (action === "edit") {
     const amount = Number(target.dataset.amount ?? "0");
+    const startMonth = state.recurringStartMonth?.[parent]?.[category] || currentMonth;
+    budgetEditState.parent = parent;
+    budgetEditState.category = category;
+    budgetMonthInput.value = startMonth;
     budgetCategoryInput.value = category;
     budgetAmountInput.value = Number.isNaN(amount) ? "" : String(amount);
     budgetAutoRenewInput.checked = true;
@@ -3001,10 +3039,15 @@ function addOwnedBucket(buckets, sourceMonth, owner, amount) {
 
 function getBudgetAmountForMonth(month, category, parent) {
   const explicit = state.monthlyBudgets[month]?.[category]?.[parent];
-  if (typeof explicit === "number") {
+  const recurringAmount = state.recurringBudgets?.[parent]?.[category] ?? 0;
+  const hasRecurring = Math.abs(recurringAmount) > 0.004;
+
+  if (typeof explicit === "number" && Math.abs(explicit) > 0.004) {
     return explicit;
   }
-  const recurringAmount = state.recurringBudgets?.[parent]?.[category] ?? 0;
+  if (!hasRecurring) {
+    return typeof explicit === "number" ? explicit : 0;
+  }
   if (Math.abs(recurringAmount) <= 0.004) {
     return 0;
   }
@@ -3345,6 +3388,24 @@ function handleCategoryConfigListClick(event) {
   render();
 }
 
+function pruneInactiveRecurringDefaults(stateRef) {
+  PARENTS.forEach((parent) => {
+    const budgetMap = stateRef.recurringBudgets?.[parent];
+    if (!budgetMap || typeof budgetMap !== "object") {
+      return;
+    }
+    Object.keys(budgetMap).forEach((categoryId) => {
+      const amount = Number(budgetMap[categoryId]) || 0;
+      const startMonth = stateRef.recurringStartMonth?.[parent]?.[categoryId] ?? null;
+      if (Math.abs(amount) <= 0.004 && (startMonth === null || startMonth === undefined)) {
+        delete budgetMap[categoryId];
+        delete stateRef.recurringStartMonth?.[parent]?.[categoryId];
+        delete stateRef.recurringIntervalMonths?.[parent]?.[categoryId];
+      }
+    });
+  });
+}
+
 function ensureCategoryStructures(stateRef) {
   const incoming = Array.isArray(stateRef.categories) ? stateRef.categories : [];
   const seeded = incoming.length > 0 ? incoming : defaultCategories;
@@ -3376,18 +3437,29 @@ function ensureCategoryStructures(stateRef) {
     stateRef.recurringStartMonth[parent] ??= {};
     stateRef.recurringIntervalMonths[parent] ??= {};
     unique.forEach((category) => {
-      if (typeof stateRef.recurringBudgets[parent][category.id] !== "number") {
-        stateRef.recurringBudgets[parent][category.id] = 0;
+      const budgetMap = stateRef.recurringBudgets[parent];
+      const startMap = stateRef.recurringStartMonth[parent];
+      const intervalMap = stateRef.recurringIntervalMonths[parent];
+      if (
+        Object.prototype.hasOwnProperty.call(budgetMap, category.id) &&
+        typeof budgetMap[category.id] !== "number"
+      ) {
+        delete budgetMap[category.id];
       }
-      if (typeof stateRef.recurringStartMonth[parent][category.id] !== "string") {
-        stateRef.recurringStartMonth[parent][category.id] = null;
+      if (
+        Object.prototype.hasOwnProperty.call(startMap, category.id) &&
+        typeof startMap[category.id] !== "string" &&
+        startMap[category.id] !== null
+      ) {
+        delete startMap[category.id];
       }
-      const intervalRaw = stateRef.recurringIntervalMonths[parent][category.id];
-      stateRef.recurringIntervalMonths[parent][category.id] = clampRecurringIntervalMonths(
-        intervalRaw === undefined || intervalRaw === null ? 1 : intervalRaw
-      );
+      if (Object.prototype.hasOwnProperty.call(intervalMap, category.id)) {
+        intervalMap[category.id] = clampRecurringIntervalMonths(intervalMap[category.id]);
+      }
     });
   });
+
+  pruneInactiveRecurringDefaults(stateRef);
 
   const validCategoryIds = new Set(unique.map((c) => c.id));
   PARENTS.forEach((parent) => {
@@ -3432,6 +3504,27 @@ function ensureCategoryStructures(stateRef) {
 }
 
 // State persistence and migrations
+const RECURRING_OWNER_MAP_KEYS = ["recurringBudgets", "recurringStartMonth", "recurringIntervalMonths"];
+
+function mergeMissingOwnerKeyedMaps(targetState, peerState, mapKeys = RECURRING_OWNER_MAP_KEYS) {
+  mapKeys.forEach((mapKey) => {
+    targetState[mapKey] ??= {};
+    peerState[mapKey] ??= {};
+    PARENTS.forEach((parent) => {
+      targetState[mapKey][parent] ??= {};
+      const peerMap = peerState[mapKey][parent] ?? {};
+      Object.keys(peerMap).forEach((categoryId) => {
+        if (
+          Object.prototype.hasOwnProperty.call(peerMap, categoryId) &&
+          !Object.prototype.hasOwnProperty.call(targetState[mapKey][parent], categoryId)
+        ) {
+          targetState[mapKey][parent][categoryId] = peerMap[categoryId];
+        }
+      });
+    });
+  });
+}
+
 function mergeOwnerKeyedMaps(baseMap, parsedMap) {
   const merged = { ...baseMap, ...(parsedMap ?? {}) };
   PARENTS.forEach((owner) => {
@@ -3563,6 +3656,7 @@ async function hydrateFromCloudSnapshot() {
       Number(remoteMerged.syncRevision) || new Date(data.updated_at).getTime() || 0;
 
     if (remoteRev > localRev) {
+      mergeMissingOwnerKeyedMaps(remoteMerged, state);
       replaceAppState(remoteMerged);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       cloudSyncState.lastSyncedAt = Date.now();
@@ -3587,6 +3681,19 @@ async function pushCloudSnapshot(options = {}) {
     return;
   }
   try {
+    const { data: remoteRow, error: readError } = await supabaseClient
+      .from("child_budget_snapshots")
+      .select("payload")
+      .eq("child_id", ACTIVE_CHILD_ID)
+      .maybeSingle();
+    if (readError) {
+      throw readError;
+    }
+    if (remoteRow?.payload && typeof remoteRow.payload === "object") {
+      const remoteMerged = mergeParsedIntoBase(remoteRow.payload);
+      mergeMissingOwnerKeyedMaps(state, remoteMerged);
+    }
+
     state.syncRevision = Math.max(Number(state.syncRevision) || 0, Date.now());
     ensureCategoryStructures(state);
     stampAppModeOnState(state);
