@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-05-21-1400";
+const APP_BUILD_VERSION = "2026-08-04-1545";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -741,9 +741,18 @@ async function init() {
     const month = budgetMonthInput.value;
     const parent = normalizeOwnerKey(budgetEditState.parent ?? session.loggedInParent);
     const category = budgetCategoryInput.value;
-    const amount = Number(budgetAmountInput.value);
+    const amount = parseMoneyInput(budgetAmountInput.value);
 
-    if (!month || !category || Number.isNaN(amount)) {
+    if (!month || !category) {
+      setParentMessageStatus("Kies een maand en categorie om het budget op te slaan.", false);
+      return;
+    }
+    if (amount === null) {
+      setParentMessageStatus("Vul een geldig bedrag in (bv. 6,25 of 6.25).", false);
+      return;
+    }
+    if (amount < 0) {
+      setParentMessageStatus("Budget mag niet negatief zijn.", false);
       return;
     }
 
@@ -763,6 +772,13 @@ async function init() {
     state.monthlyBudgets[month][category] ??= createEmptyOwnerAmounts();
     state.monthlyBudgets[month][category][parent] = amount;
     if (budgetAutoRenewInput.checked) {
+      if (amount <= 0.004) {
+        setParentMessageStatus(
+          "Automatisch verlengen lukt niet met €0. Vul een bedrag groter dan 0 in, of vink verlengen uit.",
+          false
+        );
+        return;
+      }
       state.recurringBudgets[parent][category] = amount;
       state.recurringStartMonth[parent][category] = month;
       state.recurringIntervalMonths[parent][category] = readBudgetRecurringIntervalFromForm();
@@ -774,6 +790,10 @@ async function init() {
     budgetEditState.parent = null;
     budgetEditState.category = null;
     syncBudgetRecurringIntervalVisibility();
+    setParentMessageStatus(
+      `Budget ${humanCategory(category).toLowerCase()} opgeslagen: ${currency.format(amount)} voor ${formatMonth(month)}.`,
+      true
+    );
   });
 
   txForm.addEventListener("submit", async (event) => {
@@ -784,13 +804,18 @@ async function init() {
     const date = txDateInput.value;
     const category = txCategoryInput.value;
     const type = txTopupArmed ? "topup" : "expense";
-    const rawAmount = Number(txAmountInput.value);
+    const rawAmount = parseMoneyInput(txAmountInput.value);
     const month = date.slice(0, 7);
     const editingTx = txEditState.editingId
       ? state.transactions.find((tx) => tx.id === txEditState.editingId)
       : null;
 
-    if (!date || !category || Number.isNaN(rawAmount) || rawAmount <= 0) {
+    if (!date || !category) {
+      setParentMessageStatus("Vul datum en categorie in.", false);
+      return;
+    }
+    if (rawAmount === null || rawAmount <= 0) {
+      setParentMessageStatus("Vul een geldig bedrag in groter dan 0 (bv. 9,99).", false);
       return;
     }
 
@@ -3072,12 +3097,73 @@ function pruneZeroBuckets(buckets) {
   }
 }
 
+function parseMoneyInput(raw) {
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  let text = String(raw ?? "").trim();
+  if (!text) {
+    return null;
+  }
+  text = text.replace(/\s/g, "").replace(/€/g, "");
+  // Belgian/EU: 1.234,56 or plain 6,25 → normalize to JS float
+  if (text.includes(",") && text.includes(".")) {
+    if (text.lastIndexOf(",") > text.lastIndexOf(".")) {
+      text = text.replace(/\./g, "").replace(",", ".");
+    } else {
+      text = text.replace(/,/g, "");
+    }
+  } else if (text.includes(",")) {
+    text = text.replace(",", ".");
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(text)) {
+    return null;
+  }
+  const value = Number(text);
+  return Number.isFinite(value) ? value : null;
+}
+
 function normalizeCategoryId(raw) {
   return String(raw ?? "")
     .trim()
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[/&+_]+/g, "-")
     .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function categoryIdMatchKey(id) {
+  return normalizeCategoryId(id).replace(/-/g, "");
+}
+
+function findSimilarCategory(id, label = "") {
+  const key = categoryIdMatchKey(id);
+  const labelKey = categoryIdMatchKey(label);
+  if (!key && !labelKey) {
+    return null;
+  }
+  return (
+    (state.categories ?? []).find((entry) => {
+      const entryKey = categoryIdMatchKey(entry.id);
+      const entryLabelKey = categoryIdMatchKey(entry.label);
+      if (key && (entryKey === key || entryLabelKey === key)) {
+        return true;
+      }
+      if (labelKey && (entryKey === labelKey || entryLabelKey === labelKey)) {
+        return true;
+      }
+      // "cosmetica" vs bestaande "cosmeticaaccessoires"
+      const shortKey = key || labelKey;
+      if (shortKey.length >= 4 && (entryKey.includes(shortKey) || shortKey.includes(entryKey))) {
+        return true;
+      }
+      return false;
+    }) ?? null
+  );
 }
 
 function normalizeCategoryHexColor(raw) {
@@ -3099,7 +3185,15 @@ function pickFallbackColorForCategoryId(categoryId) {
 }
 
 function getCategoryById(categoryId) {
-  return (state.categories ?? []).find((entry) => entry.id === categoryId) ?? null;
+  const exact = (state.categories ?? []).find((entry) => entry.id === categoryId);
+  if (exact) {
+    return exact;
+  }
+  const key = categoryIdMatchKey(categoryId);
+  if (!key) {
+    return null;
+  }
+  return (state.categories ?? []).find((entry) => categoryIdMatchKey(entry.id) === key) ?? null;
 }
 
 function getAllCategoryIds() {
@@ -3255,8 +3349,18 @@ function handleCategoryConfigSubmit(event) {
     setCategoryConfigStatus("Vul een geldige categorienaam in.", false);
     return;
   }
-  if (getCategoryById(id)) {
-    setCategoryConfigStatus("Deze categorie bestaat al.", false);
+  const similar = findSimilarCategory(id, label);
+  if (similar) {
+    setCategoryConfigStatus(
+      `Deze categorie bestaat al als "${similar.label}". Gebruik die in plaats van een dubbele lege categorie.`,
+      false
+    );
+    if (budgetCategoryInput) {
+      budgetCategoryInput.value = similar.id;
+    }
+    if (txCategoryInput) {
+      txCategoryInput.value = similar.id;
+    }
     return;
   }
   state.categories.push({ id, label, emoji, enabled: true, color: colorNorm });
@@ -3603,6 +3707,46 @@ function replaceAppState(nextMerged) {
   ensureCategoryStructures(state);
 }
 
+function stateContentScore(stateRef) {
+  if (!stateRef || typeof stateRef !== "object") {
+    return 0;
+  }
+  const txCount = Array.isArray(stateRef.transactions) ? stateRef.transactions.length : 0;
+  const categoryCount = Array.isArray(stateRef.categories) ? stateRef.categories.length : 0;
+  let budgetCells = 0;
+  Object.values(stateRef.monthlyBudgets ?? {}).forEach((monthEntry) => {
+    if (!monthEntry || typeof monthEntry !== "object") {
+      return;
+    }
+    Object.values(monthEntry).forEach((owners) => {
+      if (!owners || typeof owners !== "object") {
+        return;
+      }
+      Object.values(owners).forEach((amount) => {
+        if (typeof amount === "number" && Math.abs(amount) > 0.004) {
+          budgetCells += 1;
+        }
+      });
+    });
+  });
+  let recurringCells = 0;
+  Object.values(stateRef.recurringBudgets ?? {}).forEach((ownerMap) => {
+    if (!ownerMap || typeof ownerMap !== "object") {
+      return;
+    }
+    Object.values(ownerMap).forEach((amount) => {
+      if (typeof amount === "number" && Math.abs(amount) > 0.004) {
+        recurringCells += 1;
+      }
+    });
+  });
+  return txCount * 10 + budgetCells * 5 + recurringCells * 5 + categoryCount;
+}
+
+function isSparseState(stateRef) {
+  return stateContentScore(stateRef) < 8;
+}
+
 async function hydrateFromCloudSnapshot() {
   cloudSyncState.syncEligible =
     looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID) && !CLOUD_SYNC_BLOCKED;
@@ -3629,7 +3773,9 @@ async function hydrateFromCloudSnapshot() {
     const localRev = Number(state.syncRevision) || 0;
 
     if (!data?.payload || typeof data.payload !== "object") {
-      await pushCloudSnapshot({ silent: true });
+      if (!isSparseState(state)) {
+        await pushCloudSnapshot({ silent: true });
+      }
       cloudSyncState.lastSyncedAt = Date.now();
       renderCloudSyncStatus();
       return;
@@ -3639,7 +3785,10 @@ async function hydrateFromCloudSnapshot() {
     if (!compatibility.ok) {
       const remoteMode = inferPayloadAppMode(data.payload);
       if (IS_SOLO_MODE && remoteMode === "family") {
-        await pushCloudSnapshot({ silent: true });
+        // Nooit een lege solo-state over echte family-clouddata pushen.
+        if (!isSparseState(state)) {
+          await pushCloudSnapshot({ silent: true });
+        }
         if (!cloudSyncState.lastSyncError) {
           cloudSyncState.lastSyncedAt = Date.now();
           renderCloudSyncStatus();
@@ -3654,8 +3803,12 @@ async function hydrateFromCloudSnapshot() {
     const remoteMerged = mergeParsedIntoBase(data.payload);
     const remoteRev =
       Number(remoteMerged.syncRevision) || new Date(data.updated_at).getTime() || 0;
+    const localScore = stateContentScore(state);
+    const remoteScore = stateContentScore(remoteMerged);
+    const remoteIsRicher = remoteScore >= localScore + 8 && remoteScore > localScore;
 
-    if (remoteRev > localRev) {
+    // Prefer richer cloud data over a newer-but-empty local revision (common after cache wipe).
+    if (remoteRev > localRev || (remoteIsRicher && isSparseState(state))) {
       mergeMissingOwnerKeyedMaps(remoteMerged, state);
       replaceAppState(remoteMerged);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -3665,6 +3818,14 @@ async function hydrateFromCloudSnapshot() {
     }
 
     if (localRev > remoteRev) {
+      if (remoteIsRicher && localScore < remoteScore) {
+        mergeMissingOwnerKeyedMaps(remoteMerged, state);
+        replaceAppState(remoteMerged);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        cloudSyncState.lastSyncedAt = Date.now();
+        renderCloudSyncStatus();
+        return;
+      }
       await pushCloudSnapshot({ silent: true });
       cloudSyncState.lastSyncedAt = Date.now();
     } else {
@@ -3690,8 +3851,23 @@ async function pushCloudSnapshot(options = {}) {
       throw readError;
     }
     if (remoteRow?.payload && typeof remoteRow.payload === "object") {
-      const remoteMerged = mergeParsedIntoBase(remoteRow.payload);
-      mergeMissingOwnerKeyedMaps(state, remoteMerged);
+      const compatibility = payloadCompatibleWithCurrentApp(remoteRow.payload);
+      if (compatibility.ok) {
+        const remoteMerged = mergeParsedIntoBase(remoteRow.payload);
+        const remoteScore = stateContentScore(remoteMerged);
+        const localScore = stateContentScore(state);
+        // Guard: never overwrite richer cloud data with a sparse local snapshot.
+        if (isSparseState(state) && remoteScore > localScore) {
+          mergeMissingOwnerKeyedMaps(remoteMerged, state);
+          replaceAppState(remoteMerged);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          cloudSyncState.lastSyncError = "";
+          cloudSyncState.lastSyncedAt = Date.now();
+          renderCloudSyncStatus();
+          return;
+        }
+        mergeMissingOwnerKeyedMaps(state, remoteMerged);
+      }
     }
 
     state.syncRevision = Math.max(Number(state.syncRevision) || 0, Date.now());
