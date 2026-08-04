@@ -6,7 +6,7 @@ const path = require("path");
 const root = path.join(__dirname, "..");
 let html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 html = html.replaceAll("./assets/", "../assets/");
-html = html.replace(/\?v=2026-\d{2}-\d{2}-\d{4}/g, "?v=2026-08-04-1545");
+html = html.replace(/\?v=2026-\d{2}-\d{2}-\d{4}/g, "?v=2026-08-04-2230");
 
 const marker = '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>';
 

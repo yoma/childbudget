@@ -1178,6 +1178,21 @@ body {
   line-height: 1.35;
 }
 
+.tx-availability-hint {
+  margin: 0.1rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.tx-availability-hint.warn {
+  color: #9a4b16;
+  font-weight: 600;
+}
+
+.tx-availability-hint.ok {
+  color: #2f6b4f;
+}
+
 .tx-preset-btn {
   border: 1px solid #ded0ef;
   background: linear-gradient(135deg, #fdf9ff, #f7f0ff);

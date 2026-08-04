@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-04-1545";
+const APP_BUILD_VERSION = "2026-08-04-2230";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -420,6 +420,21 @@ function applySoloModeDom() {
   txFundingLabel?.classList.add("hidden");
 }
 
+function getTodayDateInputValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+}
+
+/** Availability for paying an expense: always include budgets up to today. */
+function getFundingAsOfMonth(expenseMonth) {
+  if (!expenseMonth) {
+    return currentMonth;
+  }
+  return expenseMonth < currentMonth ? currentMonth : expenseMonth;
+}
+
 async function resolveSoloBudgetUsageDecision({
   category,
   month,
@@ -428,9 +443,10 @@ async function resolveSoloBudgetUsageDecision({
   excludeLinkedTransferIds = [],
 }) {
   const excludeTxIds = [excludeTxId, ...excludeLinkedTransferIds].filter(Boolean);
+  const fundingMonth = getFundingAsOfMonth(month);
   const usage = [];
   let remaining = requestedAmount;
-  const ownSplit = getParentRemainingSplit(category, month, { excludeTxIds });
+  const ownSplit = getParentRemainingSplit(category, fundingMonth, { excludeTxIds });
   const ownAvailable = Math.max(0, ownSplit[SOLO_OWNER] ?? 0);
   remaining = Math.max(0, remaining - ownAvailable);
 
@@ -438,7 +454,7 @@ async function resolveSoloBudgetUsageDecision({
     const otherCategories = getEnabledCategoryIds().filter((item) => item !== category);
     const options = otherCategories
       .map((fromCategory) => {
-        const split = getParentRemainingSplit(fromCategory, month, { excludeTxIds });
+        const split = getParentRemainingSplit(fromCategory, fundingMonth, { excludeTxIds });
         const baseAvailable = Math.max(0, split[SOLO_OWNER] ?? 0);
         const alreadyUsed = usage
           .filter((entry) => entry.fromCategory === fromCategory)
@@ -462,7 +478,12 @@ async function resolveSoloBudgetUsageDecision({
       category,
       remaining,
       options,
+      expenseMonth: month,
+      fundingMonth,
     });
+    if (selected?.useTodayDate) {
+      return { usage: [], cancelledByUser: false, useTodayDate: true };
+    }
     if (!selected) {
       const totalPossible = options.reduce((acc, option) => acc + option.available, 0);
       if (totalPossible >= remaining) {
@@ -512,6 +533,8 @@ const budgetSourceOptionsEl = document.getElementById("budgetSourceOptions");
 const cancelBudgetSourceBtn = document.getElementById("cancelBudgetSourceBtn");
 const useRecommendedBudgetSourceBtn = document.getElementById("useRecommendedBudgetSourceBtn");
 const useSelectedBudgetSourceBtn = document.getElementById("useSelectedBudgetSourceBtn");
+const useTodayDateBudgetSourceBtn = document.getElementById("useTodayDateBudgetSourceBtn");
+const txAvailabilityHintEl = document.getElementById("txAvailabilityHint");
 const parentPanel = document.getElementById("parentPanel");
 const closeParentPanelBtn = document.getElementById("closeParentPanelBtn");
 const logoutParentBtn = document.getElementById("logoutParentBtn");
@@ -614,7 +637,7 @@ async function init() {
   applySoloModeDom();
   monthLabelEl.textContent = formatMonth(currentMonth);
   budgetMonthInput.value = currentMonth;
-  txDateInput.value = new Date().toISOString().slice(0, 10);
+  txDateInput.value = getTodayDateInputValue();
   renderLoggedInParent();
   setParentPanelOpen(false);
   await initializeCloudConnection();
@@ -692,6 +715,7 @@ async function init() {
   cancelBudgetSourceBtn.addEventListener("click", () => closeBudgetSourceDialog("cancel"));
   useRecommendedBudgetSourceBtn.addEventListener("click", () => closeBudgetSourceDialog("recommended"));
   useSelectedBudgetSourceBtn.addEventListener("click", () => closeBudgetSourceDialog("selected"));
+  useTodayDateBudgetSourceBtn?.addEventListener("click", () => closeBudgetSourceDialog("use-today"));
   budgetSourceOptionsEl.addEventListener("click", handleBudgetSourceOptionClick);
   budgetSourceDialog.addEventListener("cancel", (event) => {
     event.preventDefault();
@@ -706,8 +730,16 @@ async function init() {
   txPresetButtons.forEach((button) => {
     button.addEventListener("click", handleTxPresetClick);
   });
-  txFundingModeInput?.addEventListener("change", syncTxFundingModeUi);
-  txCategoryInput?.addEventListener("change", syncTxFundingModeUi);
+  txFundingModeInput?.addEventListener("change", () => {
+    syncTxFundingModeUi();
+    syncTxAvailabilityHint();
+  });
+  txCategoryInput?.addEventListener("change", () => {
+    syncTxFundingModeUi();
+    syncTxAvailabilityHint();
+  });
+  txDateInput?.addEventListener("change", syncTxAvailabilityHint);
+  txAmountInput?.addEventListener("input", syncTxAvailabilityHint);
   categoryConfigForm?.addEventListener("submit", handleCategoryConfigSubmit);
 
   applyInitialViewMode();
@@ -726,7 +758,9 @@ async function init() {
       parentDialog.close();
       setParentPanelOpen(true);
       pinInput.value = "";
+      resetTransactionFormState();
       renderLoggedInParent();
+      syncTxAvailabilityHint();
       parentPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
@@ -801,11 +835,10 @@ async function init() {
     if (!session.loggedInParent) {
       return;
     }
-    const date = txDateInput.value;
+    let date = txDateInput.value;
     const category = txCategoryInput.value;
     const type = txTopupArmed ? "topup" : "expense";
     const rawAmount = parseMoneyInput(txAmountInput.value);
-    const month = date.slice(0, 7);
     const editingTx = txEditState.editingId
       ? state.transactions.find((tx) => tx.id === txEditState.editingId)
       : null;
@@ -822,9 +855,9 @@ async function init() {
     let budgetUsage = [];
     let linkedTransferIds = [];
     if (type === "expense") {
-      const usageDecision = await resolveBudgetUsageDecision({
+      let usageDecision = await resolveBudgetUsageDecision({
         category,
-        month,
+        month: date.slice(0, 7),
         requestedAmount: rawAmount,
         actingParent: session.loggedInParent,
         fundingMode: normalizeTxFundingMode(txFundingModeInput?.value),
@@ -833,11 +866,28 @@ async function init() {
           ? editingTx.linkedTransferIds
           : [],
       });
+      if (usageDecision.useTodayDate) {
+        date = getTodayDateInputValue();
+        txDateInput.value = date;
+        syncTxAvailabilityHint();
+        usageDecision = await resolveBudgetUsageDecision({
+          category,
+          month: date.slice(0, 7),
+          requestedAmount: rawAmount,
+          actingParent: session.loggedInParent,
+          fundingMode: normalizeTxFundingMode(txFundingModeInput?.value),
+          excludeTxId: txEditState.editingId ?? null,
+          excludeLinkedTransferIds: Array.isArray(editingTx?.linkedTransferIds)
+            ? editingTx.linkedTransferIds
+            : [],
+        });
+      }
       if (usageDecision.cancelledByUser) {
         return;
       }
       budgetUsage = usageDecision.usage;
     }
+    const month = date.slice(0, 7);
 
     const amount = type === "expense" ? -Math.abs(rawAmount) : Math.abs(rawAmount);
     if (txEditState.editingId) {
@@ -2171,8 +2221,10 @@ async function resolveBudgetUsageDecision({
   const otherParent = getOtherParentKey(actingParent);
   const otherCategories = getEnabledCategoryIds().filter((item) => item !== category);
   const excludeTxIds = [excludeTxId, ...excludeLinkedTransferIds].filter(Boolean);
+  // Dekking kijkt tot vandaag: oude datum mag recente maandbudgetten gebruiken.
+  const fundingMonth = getFundingAsOfMonth(month);
 
-  const sameCategorySplit = getParentRemainingSplit(category, month, { excludeTxIds });
+  const sameCategorySplit = getParentRemainingSplit(category, fundingMonth, { excludeTxIds });
   let remaining = requestedAmount;
   const usage = [];
 
@@ -2213,7 +2265,7 @@ async function resolveBudgetUsageDecision({
     });
 
     const options = uniqueCandidates.map((candidate) => {
-        const split = getParentRemainingSplit(candidate.fromCategory, month, { excludeTxIds });
+        const split = getParentRemainingSplit(candidate.fromCategory, fundingMonth, { excludeTxIds });
         const baseAvailable = Math.max(0, split[candidate.fromParent] ?? 0);
         const alreadyUsed = usage
           .filter(
@@ -2237,7 +2289,12 @@ async function resolveBudgetUsageDecision({
       remaining,
       options,
       fundingMode: mode,
+      expenseMonth: month,
+      fundingMonth,
     });
+    if (selected?.useTodayDate) {
+      return { usage: [], cancelledByUser: false, useTodayDate: true };
+    }
     if (!selected) {
       if (totalPossible >= remaining) {
         return { usage: [], cancelledByUser: true };
@@ -2273,7 +2330,15 @@ function handleBudgetSourceOptionClick(event) {
   renderBudgetSourceOptions();
 }
 
-async function chooseBudgetSourceOption({ actingParent, category, remaining, options, fundingMode = "auto" }) {
+async function chooseBudgetSourceOption({
+  actingParent,
+  category,
+  remaining,
+  options,
+  fundingMode = "auto",
+  expenseMonth = currentMonth,
+  fundingMonth = currentMonth,
+}) {
   if (!budgetSourceDialog || !budgetSourceMessageEl || !budgetSourceOptionsEl) {
     return options[0] ?? null;
   }
@@ -2310,6 +2375,10 @@ async function chooseBudgetSourceOption({ actingParent, category, remaining, opt
 
   const parentLabel = IS_SOLO_MODE ? "jouw" : actingParent === "mama" ? "mama" : "papa";
   const catLabel = humanCategory(category).toLowerCase();
+  const datedInPast = Boolean(expenseMonth && expenseMonth < currentMonth);
+  if (useTodayDateBudgetSourceBtn) {
+    useTodayDateBudgetSourceBtn.classList.toggle("hidden", !datedInPast);
+  }
   if (mode === "manual") {
     budgetSourceMessageEl.textContent = `Kies budgetbron voor ${currency.format(remaining)} (${catLabel}). Je mag eigen of andere ouder/categorie kiezen.`;
   } else if (mode === "other-same") {
@@ -2318,7 +2387,16 @@ async function chooseBudgetSourceOption({ actingParent, category, remaining, opt
     const suffix = IS_SOLO_MODE
       ? " Kies uit een andere categorie."
       : " Kies waar het vandaan komt (ook dezelfde categorie bij de andere ouder).";
-    budgetSourceMessageEl.textContent = `Tekort op ${parentLabel} ${catLabel}: ${currency.format(remaining)}.${suffix}`;
+    const asOfHint =
+      fundingMonth && fundingMonth !== expenseMonth
+        ? ` Saldo bekeken tot ${formatMonth(fundingMonth).toLowerCase()}.`
+        : "";
+    budgetSourceMessageEl.textContent = `Tekort op ${parentLabel} ${catLabel}: ${currency.format(remaining)}.${asOfHint}${suffix}`;
+  }
+  if (datedInPast) {
+    budgetSourceMessageEl.textContent += ` Tip: de gekozen datum valt in ${formatMonth(
+      expenseMonth
+    ).toLowerCase()}. Zet eventueel op vandaag.`;
   }
   renderBudgetSourceOptions();
   budgetSourceDialog.showModal();
@@ -2329,6 +2407,9 @@ async function chooseBudgetSourceOption({ actingParent, category, remaining, opt
 
   if (choice.mode === "cancel") {
     return null;
+  }
+  if (choice.mode === "use-today") {
+    return { useTodayDate: true };
   }
   const optionId =
     choice.mode === "recommended" ? budgetSourceChoiceState.recommendedId : budgetSourceChoiceState.selectedId;
@@ -2717,7 +2798,7 @@ function resetTransactionFormState() {
   txEditState.editingId = null;
   txSubmitBtn.textContent = "Transactie opslaan";
   cancelTxEditBtn.classList.add("hidden");
-  txDateInput.value = new Date().toISOString().slice(0, 10);
+  txDateInput.value = getTodayDateInputValue();
   const fallbackCategory = getEnabledCategoryIds()[0] ?? getAllCategoryIds()[0] ?? "zakgeld";
   txCategoryInput.value = fallbackCategory;
   setTransactionMode("expense");
@@ -2728,6 +2809,54 @@ function resetTransactionFormState() {
     txFundingModeInput.value = "auto";
   }
   syncTxFundingFieldVisibility();
+  syncTxAvailabilityHint();
+}
+
+function syncTxAvailabilityHint() {
+  if (!txAvailabilityHintEl) {
+    return;
+  }
+  if (!session.loggedInParent || txTopupArmed) {
+    txAvailabilityHintEl.textContent = "";
+    txAvailabilityHintEl.classList.remove("warn", "ok");
+    return;
+  }
+  const date = txDateInput?.value || getTodayDateInputValue();
+  const expenseMonth = date.slice(0, 7);
+  const category = txCategoryInput?.value;
+  if (!category || !expenseMonth) {
+    txAvailabilityHintEl.textContent = "";
+    txAvailabilityHintEl.classList.remove("warn", "ok");
+    return;
+  }
+  const actingParent = normalizeOwnerKey(session.loggedInParent);
+  const fundingMonth = getFundingAsOfMonth(expenseMonth);
+  const onDateSplit = getParentRemainingSplit(category, expenseMonth);
+  const nowSplit = getParentRemainingSplit(category, fundingMonth);
+  const onDateOwn = Math.max(0, onDateSplit[actingParent] ?? 0);
+  const nowOwn = Math.max(0, nowSplit[actingParent] ?? 0);
+  const amount = parseMoneyInput(txAmountInput?.value);
+  const catLabel = humanCategory(category).toLowerCase();
+  const parentLabel = IS_SOLO_MODE ? "jouw" : actingParent;
+
+  if (expenseMonth < currentMonth && nowOwn > onDateOwn + 0.004) {
+    txAvailabilityHintEl.textContent = `Op ${formatMonth(expenseMonth).toLowerCase()} heeft ${parentLabel} ${currency.format(onDateOwn)} ${catLabel}. Nu (${formatMonth(currentMonth).toLowerCase()}): ${currency.format(nowOwn)}. Recente aankoop? Zet de datum op vandaag.`;
+    txAvailabilityHintEl.classList.add("warn");
+    txAvailabilityHintEl.classList.remove("ok");
+    return;
+  }
+
+  const available = nowOwn;
+  if (amount !== null && amount > available + 0.004) {
+    txAvailabilityHintEl.textContent = `${parentLabel} heeft nu ${currency.format(available)} in ${catLabel}. Voor ${currency.format(amount)} kies je daarna een andere bron.`;
+    txAvailabilityHintEl.classList.add("warn");
+    txAvailabilityHintEl.classList.remove("ok");
+    return;
+  }
+
+  txAvailabilityHintEl.textContent = `${parentLabel} heeft nu ${currency.format(available)} beschikbaar in ${catLabel}.`;
+  txAvailabilityHintEl.classList.toggle("ok", available > 0.004);
+  txAvailabilityHintEl.classList.toggle("warn", available <= 0.004);
 }
 
 function handleQuickAmountClick(event) {

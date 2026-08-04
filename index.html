@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./assets/css/styles.css?v=2026-08-04-1545" />
+    <link rel="stylesheet" href="./assets/css/styles.css?v=2026-08-04-2230" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
@@ -113,6 +113,7 @@
         <div id="budgetSourceOptions" class="budget-source-options"></div>
         <div class="dialog-actions">
           <button id="cancelBudgetSourceBtn" class="btn btn-ghost" type="button">Niet opslaan</button>
+          <button id="useTodayDateBudgetSourceBtn" class="btn btn-ghost hidden" type="button">Zet datum op vandaag</button>
           <button id="useRecommendedBudgetSourceBtn" class="btn btn-ghost" type="button">Aanbevolen</button>
           <button id="useSelectedBudgetSourceBtn" class="btn btn-primary" type="button">Gekozen bron gebruiken</button>
         </div>
@@ -180,6 +181,7 @@
                 </select>
                 <small id="txFundingHint" class="tx-funding-hint muted"></small>
               </label>
+              <p id="txAvailabilityHint" class="tx-availability-hint muted wide" aria-live="polite"></p>
               <label>
                 <span>Bedrag (€) (zonder -)</span>
                 <input type="text" inputmode="decimal" id="txAmount" placeholder="bv. 25,00" required autocomplete="off" />
@@ -376,7 +378,7 @@
       </div>
     </section>
 
-    <script src="./assets/js/supabase-config.js?v=2026-08-04-1545"></script>
-    <script src="./assets/js/app.js?v=2026-08-04-1545"></script>
+    <script src="./assets/js/supabase-config.js?v=2026-08-04-2230"></script>
+    <script src="./assets/js/app.js?v=2026-08-04-2230"></script>
   </body>
 </html>
