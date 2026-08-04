@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-04-2230";
+const APP_BUILD_VERSION = "2026-08-04-2245";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -427,12 +427,46 @@ function getTodayDateInputValue() {
   ).padStart(2, "0")}`;
 }
 
-/** Availability for paying an expense: always include budgets up to today. */
-function getFundingAsOfMonth(expenseMonth) {
-  if (!expenseMonth) {
-    return currentMonth;
+/**
+ * If an old date has too little own-category balance but today has enough,
+ * move the date to today so funding and ledger month stay aligned.
+ */
+function alignExpenseDateWithAvailableBudget(date, category, requestedAmount, actingParent) {
+  const expenseMonth = String(date || "").slice(0, 7);
+  if (!expenseMonth || !category || expenseMonth >= currentMonth) {
+    return { date, corrected: false };
   }
-  return expenseMonth < currentMonth ? currentMonth : expenseMonth;
+  const owner = normalizeOwnerKey(actingParent);
+  const onDateOwn = Math.max(0, getParentRemainingSplit(category, expenseMonth)[owner] ?? 0);
+  const nowOwn = Math.max(0, getParentRemainingSplit(category, currentMonth)[owner] ?? 0);
+  if (onDateOwn + 0.004 < requestedAmount && nowOwn + 0.004 >= requestedAmount) {
+    return {
+      date: getTodayDateInputValue(),
+      corrected: true,
+      onDateOwn,
+      nowOwn,
+      expenseMonth,
+    };
+  }
+  return { date, corrected: false, onDateOwn, nowOwn, expenseMonth };
+}
+
+function compareTransactions(a, b) {
+  if (a?.date !== b?.date) {
+    return (a?.date || "") > (b?.date || "") ? 1 : -1;
+  }
+  // Same day: credit transfers first, then debit transfers, then normal txs.
+  const rank = (tx) => {
+    if (tx?.systemTransfer) {
+      return Number(tx.amount) >= 0 ? 0 : 1;
+    }
+    return 2;
+  };
+  const rankDiff = rank(a) - rank(b);
+  if (rankDiff !== 0) {
+    return rankDiff;
+  }
+  return String(a?.id || "").localeCompare(String(b?.id || ""));
 }
 
 async function resolveSoloBudgetUsageDecision({
@@ -443,18 +477,25 @@ async function resolveSoloBudgetUsageDecision({
   excludeLinkedTransferIds = [],
 }) {
   const excludeTxIds = [excludeTxId, ...excludeLinkedTransferIds].filter(Boolean);
-  const fundingMonth = getFundingAsOfMonth(month);
   const usage = [];
   let remaining = requestedAmount;
-  const ownSplit = getParentRemainingSplit(category, fundingMonth, { excludeTxIds });
+  const ownSplit = getParentRemainingSplit(category, month, { excludeTxIds });
   const ownAvailable = Math.max(0, ownSplit[SOLO_OWNER] ?? 0);
-  remaining = Math.max(0, remaining - ownAvailable);
+  const usedOwn = Math.min(remaining, ownAvailable);
+  if (usedOwn > 0.004) {
+    usage.push({
+      fromParent: SOLO_OWNER,
+      fromCategory: category,
+      amount: usedOwn,
+    });
+    remaining = Math.max(0, remaining - usedOwn);
+  }
 
   while (remaining > 0.004) {
     const otherCategories = getEnabledCategoryIds().filter((item) => item !== category);
     const options = otherCategories
       .map((fromCategory) => {
-        const split = getParentRemainingSplit(fromCategory, fundingMonth, { excludeTxIds });
+        const split = getParentRemainingSplit(fromCategory, month, { excludeTxIds });
         const baseAvailable = Math.max(0, split[SOLO_OWNER] ?? 0);
         const alreadyUsed = usage
           .filter((entry) => entry.fromCategory === fromCategory)
@@ -479,7 +520,6 @@ async function resolveSoloBudgetUsageDecision({
       remaining,
       options,
       expenseMonth: month,
-      fundingMonth,
     });
     if (selected?.useTodayDate) {
       return { usage: [], cancelledByUser: false, useTodayDate: true };
@@ -855,6 +895,26 @@ async function init() {
     let budgetUsage = [];
     let linkedTransferIds = [];
     if (type === "expense") {
+      const aligned = alignExpenseDateWithAvailableBudget(
+        date,
+        category,
+        rawAmount,
+        session.loggedInParent
+      );
+      if (aligned.corrected) {
+        date = aligned.date;
+        txDateInput.value = date;
+        syncTxAvailabilityHint();
+        setParentMessageStatus(
+          `Datum stond in ${formatMonth(aligned.expenseMonth).toLowerCase()} met te weinig ${humanCategory(
+            category
+          ).toLowerCase()} (${currency.format(aligned.onDateOwn)}). Gezet op vandaag (${currency.format(
+            aligned.nowOwn
+          )} beschikbaar), zodat het budget klopt.`,
+          true
+        );
+      }
+
       let usageDecision = await resolveBudgetUsageDecision({
         category,
         month: date.slice(0, 7),
@@ -914,6 +974,7 @@ async function init() {
         month,
         targetCategory: category,
         usage: budgetUsage,
+        toParent: session.loggedInParent,
       });
       existing.linkedTransferIds = linkedTransferIds;
     } else {
@@ -923,6 +984,7 @@ async function init() {
         month,
         targetCategory: category,
         usage: budgetUsage,
+        toParent: session.loggedInParent,
       });
       const newTx = {
         id: txId,
@@ -938,7 +1000,7 @@ async function init() {
       };
       state.transactions.push(newTx);
     }
-    state.transactions.sort((a, b) => (a.date > b.date ? 1 : -1));
+    state.transactions.sort(compareTransactions);
 
     saveState();
     render();
@@ -2033,7 +2095,7 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
 
     const txs = state.transactions
       .filter((tx) => tx.month === month && tx.category === category && !excludedTxIds.has(tx.id))
-      .sort((a, b) => (a.date > b.date ? 1 : -1));
+      .sort(compareTransactions);
 
     txs.forEach((tx) => {
       const owner = normalizeOwnerKey(tx.createdBy);
@@ -2053,6 +2115,9 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
           : [];
       const fundingMode = normalizeTxFundingMode(tx.fundingMode);
       let toSpend = Math.abs(tx.amount);
+      const usageSum = usageEntries.reduce((acc, entry) => acc + (Number(entry.amount) || 0), 0);
+      const usagePlanComplete = usageEntries.length > 0 && usageSum >= toSpend - 0.02;
+      const hasCrossCategoryUsage = usageEntries.some((entry) => entry.fromCategory !== category);
 
       const spendFromParentBuckets = (fromParent, requestedAmount) => {
         let requested = requestedAmount;
@@ -2070,44 +2135,33 @@ function getParentRemainingSplit(category, upToMonth, options = {}) {
         return requested;
       };
 
-      if (fundingMode === "other-same" || fundingMode === "manual") {
+      if (usagePlanComplete || fundingMode === "other-same" || fundingMode === "manual") {
         usageEntries
           .filter((entry) => entry.fromCategory === category)
           .forEach((entry) => {
             if (toSpend <= 0) {
               return;
             }
-            const fromParent =
-              entry.fromParent === "papa" ? "papa" : entry.fromParent === "mama" ? "mama" : owner;
+            const fromParent = normalizeOwnerKey(entry.fromParent || owner);
             const entryAmount = Math.min(toSpend, Number(entry.amount) || 0);
             const leftover = spendFromParentBuckets(fromParent, entryAmount);
             toSpend -= entryAmount - leftover;
           });
+        // Cross-category funding arrives via linked transferIn (credited to spender).
+        if (toSpend > 0.004 && hasCrossCategoryUsage) {
+          toSpend = spendFromParentBuckets(owner, toSpend);
+        }
       } else {
-        const ownerPositiveBuckets = buckets
-          .filter((bucket) => bucket.owner === owner && bucket.amount > 0)
-          .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
-
-        ownerPositiveBuckets.forEach((bucket) => {
-          if (toSpend <= 0) {
-            return;
-          }
-          const used = Math.min(bucket.amount, toSpend);
-          bucket.amount -= used;
-          toSpend -= used;
-        });
+        toSpend = spendFromParentBuckets(owner, toSpend);
 
         usageEntries
-          .filter((entry) => entry.fromCategory === category && entry.fromParent !== owner)
+          .filter((entry) => entry.fromCategory === category && normalizeOwnerKey(entry.fromParent) !== owner)
           .forEach((entry) => {
             if (toSpend <= 0) {
               return;
             }
             const entryAmount = Math.min(toSpend, Number(entry.amount) || 0);
-            const leftover = spendFromParentBuckets(
-              entry.fromParent === "papa" ? "papa" : "mama",
-              entryAmount
-            );
+            const leftover = spendFromParentBuckets(normalizeOwnerKey(entry.fromParent), entryAmount);
             toSpend -= entryAmount - leftover;
           });
       }
@@ -2221,16 +2275,22 @@ async function resolveBudgetUsageDecision({
   const otherParent = getOtherParentKey(actingParent);
   const otherCategories = getEnabledCategoryIds().filter((item) => item !== category);
   const excludeTxIds = [excludeTxId, ...excludeLinkedTransferIds].filter(Boolean);
-  // Dekking kijkt tot vandaag: oude datum mag recente maandbudgetten gebruiken.
-  const fundingMonth = getFundingAsOfMonth(month);
 
-  const sameCategorySplit = getParentRemainingSplit(category, fundingMonth, { excludeTxIds });
+  const sameCategorySplit = getParentRemainingSplit(category, month, { excludeTxIds });
   let remaining = requestedAmount;
   const usage = [];
 
   if (mode === "auto") {
     const ownSameCategory = Math.max(0, sameCategorySplit[actingParent] ?? 0);
-    remaining = Math.max(0, remaining - ownSameCategory);
+    const usedOwn = Math.min(remaining, ownSameCategory);
+    if (usedOwn > 0.004) {
+      usage.push({
+        fromParent: actingParent,
+        fromCategory: category,
+        amount: usedOwn,
+      });
+      remaining = Math.max(0, remaining - usedOwn);
+    }
   } else if (mode === "other-same") {
     const otherAvailable = Math.max(0, sameCategorySplit[otherParent] ?? 0);
     const fromOther = Math.min(remaining, otherAvailable);
@@ -2265,7 +2325,7 @@ async function resolveBudgetUsageDecision({
     });
 
     const options = uniqueCandidates.map((candidate) => {
-        const split = getParentRemainingSplit(candidate.fromCategory, fundingMonth, { excludeTxIds });
+        const split = getParentRemainingSplit(candidate.fromCategory, month, { excludeTxIds });
         const baseAvailable = Math.max(0, split[candidate.fromParent] ?? 0);
         const alreadyUsed = usage
           .filter(
@@ -2290,7 +2350,6 @@ async function resolveBudgetUsageDecision({
       options,
       fundingMode: mode,
       expenseMonth: month,
-      fundingMonth,
     });
     if (selected?.useTodayDate) {
       return { usage: [], cancelledByUser: false, useTodayDate: true };
@@ -2337,7 +2396,6 @@ async function chooseBudgetSourceOption({
   options,
   fundingMode = "auto",
   expenseMonth = currentMonth,
-  fundingMonth = currentMonth,
 }) {
   if (!budgetSourceDialog || !budgetSourceMessageEl || !budgetSourceOptionsEl) {
     return options[0] ?? null;
@@ -2376,8 +2434,11 @@ async function chooseBudgetSourceOption({
   const parentLabel = IS_SOLO_MODE ? "jouw" : actingParent === "mama" ? "mama" : "papa";
   const catLabel = humanCategory(category).toLowerCase();
   const datedInPast = Boolean(expenseMonth && expenseMonth < currentMonth);
+  const nowOwn = datedInPast
+    ? Math.max(0, getParentRemainingSplit(category, currentMonth)[normalizeOwnerKey(actingParent)] ?? 0)
+    : 0;
   if (useTodayDateBudgetSourceBtn) {
-    useTodayDateBudgetSourceBtn.classList.toggle("hidden", !datedInPast);
+    useTodayDateBudgetSourceBtn.classList.toggle("hidden", !(datedInPast && nowOwn > 0.004));
   }
   if (mode === "manual") {
     budgetSourceMessageEl.textContent = `Kies budgetbron voor ${currency.format(remaining)} (${catLabel}). Je mag eigen of andere ouder/categorie kiezen.`;
@@ -2387,16 +2448,12 @@ async function chooseBudgetSourceOption({
     const suffix = IS_SOLO_MODE
       ? " Kies uit een andere categorie."
       : " Kies waar het vandaan komt (ook dezelfde categorie bij de andere ouder).";
-    const asOfHint =
-      fundingMonth && fundingMonth !== expenseMonth
-        ? ` Saldo bekeken tot ${formatMonth(fundingMonth).toLowerCase()}.`
-        : "";
-    budgetSourceMessageEl.textContent = `Tekort op ${parentLabel} ${catLabel}: ${currency.format(remaining)}.${asOfHint}${suffix}`;
-  }
-  if (datedInPast) {
-    budgetSourceMessageEl.textContent += ` Tip: de gekozen datum valt in ${formatMonth(
+    budgetSourceMessageEl.textContent = `Tekort op ${parentLabel} ${catLabel} in ${formatMonth(
       expenseMonth
-    ).toLowerCase()}. Zet eventueel op vandaag.`;
+    ).toLowerCase()}: ${currency.format(remaining)}.${suffix}`;
+  }
+  if (datedInPast && nowOwn > 0.004) {
+    budgetSourceMessageEl.textContent += ` In ${formatMonth(currentMonth).toLowerCase()} heeft ${parentLabel} nog ${currency.format(nowOwn)}. Zet de datum op vandaag als de aankoop recent is.`;
   }
   renderBudgetSourceOptions();
   budgetSourceDialog.showModal();
@@ -2766,6 +2823,7 @@ function handleParentTransactionAction(event) {
       date: reverseDate,
       month: reverseDate.slice(0, 7),
       targetCategory: tx.category,
+      toParent: session.loggedInParent || tx.createdBy,
       usage: reversedUsage.map((entry) => ({
         fromParent: entry.fromParent,
         fromCategory: entry.fromCategory,
@@ -2788,7 +2846,7 @@ function handleParentTransactionAction(event) {
       linkedTransferIds: reverseLinkedTransferIds,
     };
     state.transactions.push(reverseTx);
-    state.transactions.sort((a, b) => (a.date > b.date ? 1 : -1));
+    state.transactions.sort(compareTransactions);
     saveState();
     render();
   }
@@ -2830,9 +2888,8 @@ function syncTxAvailabilityHint() {
     return;
   }
   const actingParent = normalizeOwnerKey(session.loggedInParent);
-  const fundingMonth = getFundingAsOfMonth(expenseMonth);
   const onDateSplit = getParentRemainingSplit(category, expenseMonth);
-  const nowSplit = getParentRemainingSplit(category, fundingMonth);
+  const nowSplit = getParentRemainingSplit(category, currentMonth);
   const onDateOwn = Math.max(0, onDateSplit[actingParent] ?? 0);
   const nowOwn = Math.max(0, nowSplit[actingParent] ?? 0);
   const amount = parseMoneyInput(txAmountInput?.value);
@@ -2840,21 +2897,21 @@ function syncTxAvailabilityHint() {
   const parentLabel = IS_SOLO_MODE ? "jouw" : actingParent;
 
   if (expenseMonth < currentMonth && nowOwn > onDateOwn + 0.004) {
-    txAvailabilityHintEl.textContent = `Op ${formatMonth(expenseMonth).toLowerCase()} heeft ${parentLabel} ${currency.format(onDateOwn)} ${catLabel}. Nu (${formatMonth(currentMonth).toLowerCase()}): ${currency.format(nowOwn)}. Recente aankoop? Zet de datum op vandaag.`;
+    txAvailabilityHintEl.textContent = `Op ${formatMonth(expenseMonth).toLowerCase()} heeft ${parentLabel} ${currency.format(onDateOwn)} ${catLabel}. Nu (${formatMonth(currentMonth).toLowerCase()}): ${currency.format(nowOwn)}. Recente aankoop wordt automatisch op vandaag gezet als jouw saldo dat dekt.`;
     txAvailabilityHintEl.classList.add("warn");
     txAvailabilityHintEl.classList.remove("ok");
     return;
   }
 
-  const available = nowOwn;
+  const available = onDateOwn;
   if (amount !== null && amount > available + 0.004) {
-    txAvailabilityHintEl.textContent = `${parentLabel} heeft nu ${currency.format(available)} in ${catLabel}. Voor ${currency.format(amount)} kies je daarna een andere bron.`;
+    txAvailabilityHintEl.textContent = `${parentLabel} heeft op deze datum ${currency.format(available)} in ${catLabel}. Voor ${currency.format(amount)} kies je daarna een andere bron.`;
     txAvailabilityHintEl.classList.add("warn");
     txAvailabilityHintEl.classList.remove("ok");
     return;
   }
 
-  txAvailabilityHintEl.textContent = `${parentLabel} heeft nu ${currency.format(available)} beschikbaar in ${catLabel}.`;
+  txAvailabilityHintEl.textContent = `${parentLabel} heeft op deze datum ${currency.format(available)} beschikbaar in ${catLabel}.`;
   txAvailabilityHintEl.classList.toggle("ok", available > 0.004);
   txAvailabilityHintEl.classList.toggle("warn", available <= 0.004);
 }
@@ -2941,10 +2998,11 @@ function setTransactionMode(mode) {
   syncTxFundingFieldVisibility();
 }
 
-function createLinkedCategoryTransfers({ date, month, targetCategory, usage }) {
+function createLinkedCategoryTransfers({ date, month, targetCategory, usage, toParent }) {
   if (!Array.isArray(usage) || usage.length === 0) {
     return [];
   }
+  const beneficiary = normalizeOwnerKey(toParent);
   const linkedIds = [];
   usage.forEach((entry) => {
     const amount = Number(entry.amount);
@@ -2952,7 +3010,7 @@ function createLinkedCategoryTransfers({ date, month, targetCategory, usage }) {
       return;
     }
     const fromCategory = entry.fromCategory;
-    const fromParent = entry.fromParent === "papa" ? "papa" : "mama";
+    const fromParent = normalizeOwnerKey(entry.fromParent);
     if (fromCategory === targetCategory) {
       return;
     }
@@ -2966,6 +3024,7 @@ function createLinkedCategoryTransfers({ date, month, targetCategory, usage }) {
       createdBy: fromParent,
       systemTransfer: true,
     };
+    // Credit the spender in the target category, not the source parent.
     const transferIn = {
       id: crypto.randomUUID(),
       date,
@@ -2973,7 +3032,7 @@ function createLinkedCategoryTransfers({ date, month, targetCategory, usage }) {
       category: targetCategory,
       amount,
       note: `Auto overdracht van ${humanCategory(fromCategory).toLowerCase()}`,
-      createdBy: fromParent,
+      createdBy: beneficiary,
       systemTransfer: true,
     };
     state.transactions.push(transferOut, transferIn);
@@ -3099,7 +3158,7 @@ function simulateCategory(category, upToMonth) {
 
     const txs = state.transactions
       .filter((tx) => tx.month === month && tx.category === category)
-      .sort((a, b) => (a.date > b.date ? 1 : -1));
+      .sort(compareTransactions);
 
     txs.forEach((tx) => {
       applySignedTxToBucketList(buckets, tx);
