@@ -4,14 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Child Budget · Super Admin</title>
-    <link rel="stylesheet" href="../assets/css/styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../assets/css/styles.css?v=2026-08-19-1545" />
     <script>
       window.__superAdminScriptLoaded = false;
       window.__adminScriptLoadError = function (label) {
         const buildEl = document.getElementById("adminBuildMeta");
         const statusEl = document.getElementById("adminAuthStatus");
         if (buildEl) {
-          buildEl.innerHTML = '<span class="build-status-dot offline" aria-hidden="true"></span>Build 2026-08-19-1505 · scriptfout: ' + label;
+          buildEl.innerHTML = '<span class="build-status-dot offline" aria-hidden="true"></span>Build 2026-08-19-1545 · scriptfout: ' + label;
         }
         if (statusEl) {
           statusEl.textContent = "Script laden mislukt: " + label + ". Upload/check pad en herlaad.";
@@ -28,7 +38,7 @@
         window.__adminScriptLoadError("promise: " + reason);
       });
     </script>
-    <script defer src="../assets/js/supabase-config.js" onerror="window.__adminScriptLoadError('supabase-config.js')"></script>
+    <script defer src="../assets/js/supabase-config.js?v=2026-08-19-1545" onerror="window.__adminScriptLoadError('supabase-config.js')"></script>
     <script>
       window.addEventListener("DOMContentLoaded", function () {
         window.setTimeout(function () {
@@ -50,14 +60,15 @@
       });
     </script>
   </head>
-  <body>
+  <body class="admin-page">
+    <div class="bg-glow"></div>
     <main class="container">
       <header class="hero">
         <div class="hero-text">
           <p class="eyebrow">Child Budget</p>
           <h1>Super Admin</h1>
           <p class="hero-sub">Families beheren (volledig gescheiden per gezin).</p>
-          <p id="adminBuildMeta" class="build-pill admin-build-pill">Build 2026-08-19-1505 · wacht op initialisatie...</p>
+          <p id="adminBuildMeta" class="build-pill admin-build-pill">Build 2026-08-19-1545 · wacht op initialisatie...</p>
         </div>
       </header>
 
@@ -79,7 +90,7 @@
       </section>
 
       <section id="adminWorkspace" class="grid hidden">
-        <article class="card">
+        <article class="card wide">
           <h3>Nieuwe, aparte family + kind</h3>
           <p class="muted">
             Dit maakt een volledig aparte family aan. Geen link met bestaande families.
@@ -187,6 +198,6 @@
       </section>
     </main>
 
-    <script defer src="./super-admin.js" onload="window.__superAdminScriptLoaded = true" onerror="window.__adminScriptLoadError('super-admin.js')"></script>
+    <script defer src="./super-admin.js?v=2026-08-19-1545" onload="window.__superAdminScriptLoaded = true" onerror="window.__adminScriptLoadError('super-admin.js')"></script>
   </body>
 </html>

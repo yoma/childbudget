@@ -2214,3 +2214,47 @@ body.app-mode-solo .balance-inline-overview .tag {
   opacity: 0.9;
   text-decoration: underline;
 }
+
+body.admin-page .container {
+  width: min(720px, 92%);
+}
+
+@media (min-width: 720px) {
+  body.admin-page .container {
+    width: min(720px, 92%);
+  }
+}
+
+body.admin-page #adminAuthCard .form-grid {
+  grid-template-columns: 1fr;
+  max-width: none;
+}
+
+body.admin-page #adminWorkspace.grid {
+  grid-template-columns: 1fr;
+}
+
+body.admin-page #superAdminOverview .overview-row {
+  display: block;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.86rem;
+  border-radius: 12px;
+  transform: none;
+}
+
+body.admin-page #superAdminOverview .overview-row:hover {
+  transform: none;
+}
+
+body.admin-page #superAdminOverview .overview-row p {
+  margin: 0.18rem 0 0;
+  color: var(--text-muted);
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+body.admin-page.admin-authed #adminLoginForm label,
+body.admin-page.admin-authed #adminLoginForm button[type="submit"] {
+  display: none;
+}

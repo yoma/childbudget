@@ -1,5 +1,5 @@
 const cfg = window.__SUPABASE_CONFIG__ ?? {};
-const ADMIN_BUILD_VERSION = "2026-08-19-1505";
+const ADMIN_BUILD_VERSION = "2026-08-19-1545";
 const ADMIN_API_URL = String(cfg.adminApiUrl ?? "").replace(/\/$/, "");
 
 const adminWorkspaceEl = document.getElementById("adminWorkspace");
@@ -242,24 +242,24 @@ async function refreshOverview() {
     }
     superAdminOverviewEl.innerHTML = families
       .map((family) => {
-        const children = family.children ?? [];
-        const profiles = family.profiles ?? [];
+        const children = asList(family.children);
+        const profiles = asList(family.profiles);
+        const childLinks =
+          children
+            .map((c) => {
+              const familyUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name, "family");
+              const soloUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name, "solo");
+              return `${escapeHtml(c.display_name)} (${escapeHtml(c.slug)}) - <a href="${familyUrl}" target="_blank" rel="noopener">family</a> · <a href="${soloUrl}" target="_blank" rel="noopener">solo</a>`;
+            })
+            .join(", ") || "geen";
+        const profileText =
+          profiles.map((p) => `${escapeHtml(p.display_name)} [${escapeHtml(p.role)}]`).join(", ") || "geen";
         return `
         <div class="overview-row">
-          <span>
-            <strong>${escapeHtml(family.name)}</strong><br/>
-            family_id: ${family.id}<br/>
-            kinderen: ${
-              children
-                .map((c) => {
-                  const familyUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name, "family");
-                  const soloUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name, "solo");
-                  return `${escapeHtml(c.display_name)} (${escapeHtml(c.slug)}) — <a href="${familyUrl}" target="_blank" rel="noopener">family</a> · <a href="${soloUrl}" target="_blank" rel="noopener">solo</a>`;
-                })
-                .join(", ") || "geen"
-            }<br/>
-            users: ${profiles.map((p) => `${escapeHtml(p.display_name)} [${escapeHtml(p.role)}]`).join(", ") || "geen"}
-          </span>
+          <strong>${escapeHtml(family.name)}</strong>
+          <p>family_id: ${escapeHtml(family.id)}</p>
+          <p>kinderen: ${childLinks}</p>
+          <p>users: ${profileText}</p>
         </div>
       `;
       })
@@ -274,6 +274,22 @@ async function refreshOverview() {
 function setWorkspaceVisible(isVisible) {
   adminWorkspaceEl.classList.toggle("hidden", !isVisible);
   adminLogoutBtn.classList.toggle("hidden", !isVisible);
+  document.body.classList.toggle("admin-authed", isVisible);
+}
+
+function asList(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_error) {
+      return [];
+    }
+  }
+  return [];
 }
 
 function setStatus(el, message, kind = "neutral") {
