@@ -1,7 +1,7 @@
 {
   "name": "lena-money",
   "private": true,
-  "description": "FamilyBudget snapshot API for Neon. The static app still uses Supabase until the client is wired.",
+  "description": "FamilyBudget snapshot and admin API for Neon.",
   "engines": {
     "node": ">=18"
   },

@@ -1,8 +1,6 @@
 const cfg = window.__SUPABASE_CONFIG__ ?? {};
-const supabaseClient = window.supabase?.createClient?.(cfg.url, cfg.anonKey, {
-  auth: { persistSession: true, autoRefreshToken: true },
-});
-const ADMIN_BUILD_VERSION = "2026-05-08-1400";
+const ADMIN_BUILD_VERSION = "2026-08-19-1505";
+const ADMIN_API_URL = String(cfg.adminApiUrl ?? "").replace(/\/$/, "");
 
 const adminWorkspaceEl = document.getElementById("adminWorkspace");
 const adminLoginForm = document.getElementById("adminLoginForm");
@@ -50,26 +48,17 @@ async function init() {
   window.__superAdminBooted = true;
   renderAdminBuildMeta("warn", "cloud check...");
   bindEvents();
-  if (!supabaseClient) {
+  if (!ADMIN_API_URL) {
     renderAdminBuildMeta("offline", "cloud offline");
     setStatus(
       adminAuthStatusEl,
-      "Login niet mogelijk: Supabase client niet geladen (check script-paden/config).",
+      "Login niet mogelijk: admin API niet geconfigureerd.",
       "error"
     );
     return;
   }
-  try {
-    const { data, error } = await supabaseClient.auth.getSession();
-    renderAdminBuildMeta(error ? "offline" : "online", error ? "cloud offline" : "cloud online");
-    setWorkspaceVisible(Boolean(data.session));
-    if (data.session) {
-      await refreshOverview();
-    }
-  } catch (error) {
-    renderAdminBuildMeta("offline", "cloud offline");
-    setStatus(adminAuthStatusEl, networkErrorMessage(error), "error");
-  }
+  renderAdminBuildMeta("online", "cloud klaar");
+  setWorkspaceVisible(false);
 }
 
 function renderAdminBuildMeta(dotClass, cloudLabel) {
@@ -92,16 +81,34 @@ function bindEvents() {
   refreshOverviewBtn.addEventListener("click", refreshOverview);
 }
 
+async function adminRequest(payload) {
+  const response = await fetch(ADMIN_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: adminAuthState.email,
+      password: adminAuthState.password,
+      ...payload,
+    }),
+  });
+  let body = null;
+  try {
+    body = await response.json();
+  } catch (_error) {
+    body = null;
+  }
+  if (!response.ok) {
+    throw new Error(body?.error || `HTTP ${response.status}`);
+  }
+  return body;
+}
+
 async function handleAdminLogin() {
   setStatus(adminAuthStatusEl, "Inloggen...", "neutral");
   const email = adminEmailInput.value.trim();
   const password = adminPasswordInput.value;
-  if (!supabaseClient) {
-    setStatus(
-      adminAuthStatusEl,
-      "Inloggen niet mogelijk: Supabase client ontbreekt. Herlaad pagina of check configuratie.",
-      "error"
-    );
+  if (!ADMIN_API_URL) {
+    setStatus(adminAuthStatusEl, "Inloggen niet mogelijk: admin API ontbreekt.", "error");
     return;
   }
   if (!email || !password) {
@@ -110,34 +117,24 @@ async function handleAdminLogin() {
   }
 
   try {
-    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (error) {
-      const lowered = String(error.message || "").toLowerCase();
-      if (lowered.includes("email not confirmed")) {
-        setStatus(
-          adminAuthStatusEl,
-          "Inloggen mislukt: email nog niet bevestigd. Zet user op confirmed in Supabase Auth.",
-          "error"
-        );
-        return;
-      }
-      setStatus(adminAuthStatusEl, `Inloggen mislukt: ${error.message}`, "error");
-      return;
-    }
     adminAuthState.email = email;
     adminAuthState.password = password;
+    await adminRequest({ action: "login" });
     setStatus(adminAuthStatusEl, "Ingelogd als super admin.", "success");
     renderAdminBuildMeta("online", "cloud online");
     setWorkspaceVisible(true);
     await refreshOverview();
   } catch (error) {
+    adminAuthState.email = "";
+    adminAuthState.password = "";
     renderAdminBuildMeta("offline", "cloud offline");
     setStatus(adminAuthStatusEl, networkErrorMessage(error), "error");
   }
 }
 
-async function handleAdminLogout() {
-  await supabaseClient.auth.signOut();
+function handleAdminLogout() {
+  adminAuthState.email = "";
+  adminAuthState.password = "";
   setWorkspaceVisible(false);
   setStatus(adminAuthStatusEl, "Uitgelogd.", "success");
 }
@@ -152,60 +149,31 @@ async function handleCreateFamilyWithChild(event) {
     createFamilyLinkEl.textContent = "";
   }
 
-  const userId = (await supabaseClient.auth.getUser()).data.user?.id;
-  if (!userId) {
-    setStatus(createFamilyStatusEl, "Geen actieve admin sessie.", "error");
-    return;
+  try {
+    const result = await adminRequest({
+      action: "createFamily",
+      familyName,
+      childName,
+      childSlug,
+    });
+    const familyId = result.family_id;
+    const childId = result.child_id;
+    existingFamilyIdInput.value = familyId;
+    profileFamilyIdInput.value = familyId;
+    setStatus(
+      createFamilyStatusEl,
+      `Opgeslagen. Family + kind aangemaakt. family_id=${familyId} · child_id=${childId}`,
+      "success"
+    );
+    if (createFamilyLinkEl) {
+      const appMode = readAppModeFromSelect(createFamilyAppModeInput);
+      const appUrl = buildChildAppUrl(familyId, childId, childSlug, childName, appMode);
+      createFamilyLinkEl.innerHTML = formatAppLinkHtml(appUrl, appMode);
+    }
+    await refreshOverview();
+  } catch (error) {
+    setStatus(createFamilyStatusEl, `Family aanmaken mislukt: ${error.message}`, "error");
   }
-
-  const { data: familyData, error: familyError } = await supabaseClient
-    .from("families")
-    .insert({ name: familyName })
-    .select("id")
-    .single();
-
-  if (familyError) {
-    setStatus(createFamilyStatusEl, `Family aanmaken mislukt: ${familyError.message}`, "error");
-    return;
-  }
-
-  const familyId = familyData.id;
-  const { error: seedProfileError } = await supabaseClient.from("profiles").insert({
-    id: userId,
-    family_id: familyId,
-    role: "admin",
-    display_name: "Super Admin",
-  });
-
-  if (seedProfileError && !seedProfileError.message.toLowerCase().includes("duplicate")) {
-    setStatus(createFamilyStatusEl, `Admin profile koppelen mislukt: ${seedProfileError.message}`, "error");
-    return;
-  }
-
-  const { data: childData, error: childError } = await supabaseClient
-    .from("children")
-    .insert({
-      family_id: familyId,
-      slug: childSlug,
-      display_name: childName,
-    })
-    .select("id")
-    .single();
-
-  if (childError) {
-    setStatus(createFamilyStatusEl, `Kind aanmaken mislukt: ${childError.message}`, "error");
-    return;
-  }
-
-  existingFamilyIdInput.value = familyId;
-  profileFamilyIdInput.value = familyId;
-  setStatus(createFamilyStatusEl, `Opgeslagen. Family + kind aangemaakt. family_id=${familyId} · child_id=${childData.id}`, "success");
-  if (createFamilyLinkEl) {
-    const appMode = readAppModeFromSelect(createFamilyAppModeInput);
-    const appUrl = buildChildAppUrl(familyId, childData.id, childSlug, childName, appMode);
-    createFamilyLinkEl.innerHTML = formatAppLinkHtml(appUrl, appMode);
-  }
-  await refreshOverview();
 }
 
 async function handleCreateChild(event) {
@@ -217,96 +185,66 @@ async function handleCreateChild(event) {
   const familyId = existingFamilyIdInput.value.trim();
   const childName = newChildNameInput.value.trim();
   const childSlug = newChildSlugInput.value.trim().toLowerCase();
-  const { data: childData, error } = await supabaseClient
-    .from("children")
-    .insert({
-      family_id: familyId,
-      slug: childSlug,
-      display_name: childName,
-    })
-    .select("id")
-    .single();
-  if (error) {
+  try {
+    const result = await adminRequest({
+      action: "createChild",
+      familyId,
+      childName,
+      childSlug,
+    });
+    const appMode = readAppModeFromSelect(createChildAppModeInput);
+    setStatus(
+      createChildStatusEl,
+      `Opgeslagen. child_id=${result.child_id} · modus=${appMode}`,
+      "success"
+    );
+    if (createChildLinkEl) {
+      const appUrl = buildChildAppUrl(familyId, result.child_id, childSlug, childName, appMode);
+      createChildLinkEl.innerHTML = formatAppLinkHtml(appUrl, appMode);
+    }
+    await refreshOverview();
+  } catch (error) {
     setStatus(createChildStatusEl, `Kind toevoegen mislukt: ${error.message}`, "error");
-    return;
   }
-  const appMode = readAppModeFromSelect(createChildAppModeInput);
-  setStatus(
-    createChildStatusEl,
-    `Opgeslagen. child_id=${childData.id} · modus=${appMode}`,
-    "success"
-  );
-  if (createChildLinkEl) {
-    const appUrl = buildChildAppUrl(familyId, childData.id, childSlug, childName, appMode);
-    createChildLinkEl.innerHTML = formatAppLinkHtml(appUrl, appMode);
-  }
-  await refreshOverview();
 }
 
 async function handleCreateUserWithProfile(event) {
   event.preventDefault();
-  setStatus(createUserStatusEl, "User aanmaken...", "neutral");
-  const email = newUserEmailInput.value.trim();
-  const password = newUserPasswordInput.value;
+  setStatus(createUserStatusEl, "Profiel aanmaken...", "neutral");
   const familyId = profileFamilyIdInput.value.trim();
   const role = newUserRoleInput.value;
   const displayName = newUserDisplayNameInput.value.trim();
-
-  const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({ email, password });
-  if (signUpError) {
-    setStatus(createUserStatusEl, `Auth user aanmaken mislukt: ${signUpError.message}`, "error");
-    return;
-  }
-  const newUserId = signUpData.user?.id;
-  if (!newUserId) {
-    setStatus(createUserStatusEl, "User ID ontbreekt na signUp.", "error");
-    return;
-  }
-
-  if (adminAuthState.email && adminAuthState.password) {
-    await supabaseClient.auth.signInWithPassword({
-      email: adminAuthState.email,
-      password: adminAuthState.password,
+  try {
+    const result = await adminRequest({
+      action: "createProfile",
+      familyId,
+      role,
+      displayName,
     });
+    setStatus(
+      createUserStatusEl,
+      `Opgeslagen. Profiel klaar (${role}). PIN blijft in de app, dit is geen aparte login. id=${result.profile_id}`,
+      "success"
+    );
+    await refreshOverview();
+  } catch (error) {
+    setStatus(createUserStatusEl, `Profile koppelen mislukt: ${error.message}`, "error");
   }
-
-  const { error: profileError } = await supabaseClient.from("profiles").insert({
-    id: newUserId,
-    family_id: familyId,
-    role,
-    display_name: displayName,
-  });
-
-  if (profileError) {
-    setStatus(createUserStatusEl, `Profile koppelen mislukt: ${profileError.message}`, "error");
-    return;
-  }
-  setStatus(createUserStatusEl, `Opgeslagen. User + profile klaar (${role}).`, "success");
-  await refreshOverview();
 }
 
 async function refreshOverview() {
-  const { data: families, error: familyError } = await supabaseClient
-    .from("families")
-    .select("id,name,children(id,display_name,slug),profiles(id,role,display_name)");
-
-  if (familyError) {
-    superAdminOverviewEl.innerHTML = `<p class="muted">Overzicht laden mislukt: ${escapeHtml(
-      familyError.message
-    )}</p>`;
-    return;
-  }
-
-  if (!families || families.length === 0) {
-    superAdminOverviewEl.innerHTML = `<p class="muted">Nog geen families zichtbaar voor deze admin.</p>`;
-    return;
-  }
-
-  superAdminOverviewEl.innerHTML = families
-    .map((family) => {
-      const children = family.children ?? [];
-      const profiles = family.profiles ?? [];
-      return `
+  try {
+    const result = await adminRequest({ action: "overview" });
+    const families = result.families ?? [];
+    if (families.length === 0) {
+      superAdminOverviewEl.innerHTML = `<p class="muted">Nog geen families zichtbaar voor deze admin.</p>`;
+      return;
+    }
+    superAdminOverviewEl.innerHTML = families
+      .map((family) => {
+        const children = family.children ?? [];
+        const profiles = family.profiles ?? [];
+        return `
         <div class="overview-row">
           <span>
             <strong>${escapeHtml(family.name)}</strong><br/>
@@ -324,8 +262,13 @@ async function refreshOverview() {
           </span>
         </div>
       `;
-    })
-    .join("");
+      })
+      .join("");
+  } catch (error) {
+    superAdminOverviewEl.innerHTML = `<p class="muted">Overzicht laden mislukt: ${escapeHtml(
+      error.message
+    )}</p>`;
+  }
 }
 
 function setWorkspaceVisible(isVisible) {
@@ -361,12 +304,12 @@ function networkErrorMessage(error) {
   const raw = String(error?.message ?? "").toLowerCase();
   const isFetchIssue = raw.includes("failed to fetch") || raw.includes("networkerror") || raw.includes("fetch");
   if (!isFetchIssue) {
-    return `Onverwachte fout: ${error?.message ?? "onbekend"}`;
+    return error?.message ?? "Onverwachte fout";
   }
   const onlineHint = navigator.onLine
-    ? "Je internet werkt, dus dit lijkt een blokkade naar Supabase (adblock, browser-extensie, firewall of bedrijfsnetwerk)."
+    ? "Je internet werkt, dus dit lijkt een blokkade naar de admin API (adblock, extensie of firewall)."
     : "Je lijkt offline. Controleer je internetverbinding.";
-  return `Inloggen mislukt: geen verbinding met Supabase (Failed to fetch). ${onlineHint}`;
+  return `Inloggen mislukt: geen verbinding met de admin API. ${onlineHint}`;
 }
 
 function readAppModeFromSelect(selectEl) {

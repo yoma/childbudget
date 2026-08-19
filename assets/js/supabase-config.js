@@ -7,6 +7,7 @@ window.__SUPABASE_CONFIG__ = {
   childId: "e073e1f0-4038-4f4d-bb4e-0efe96b8e0c7",
   soloChildId: "ab4ece3b-23ef-402b-a33e-a5b52cefe2be",
   // Korte URLs: /childbudget/lena en /childbudget/ella (zie map lena/ en ella/)
+  adminApiUrl: "https://lena-money-api.vercel.app/api/admin",
   snapshotApiUrl: "https://lena-money-api.vercel.app/api/snapshot",
   snapshotSecret: "ieRIjT_rJ-OtCzzOuppBA2eEm-z5tiTN4Yl4eKHVzmo",
   childRoutes: {
