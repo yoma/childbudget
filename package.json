@@ -1,0 +1,11 @@
+{
+  "name": "lena-money",
+  "private": true,
+  "description": "FamilyBudget snapshot API for Neon. The static app still uses Supabase until the client is wired.",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.1"
+  }
+}

@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-04-2245";
+const APP_BUILD_VERSION = "2026-08-19-1445";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -1168,24 +1168,27 @@ function createSupabaseClient() {
   });
 }
 
+function getCloudSnapshotApi() {
+  return window.cloudSnapshotApi;
+}
+
+function canUseCloudSnapshot() {
+  return Boolean(getCloudSnapshotApi()?.isConfigured?.()) && cloudSyncState.connected && cloudSyncState.syncEligible;
+}
+
 async function initializeCloudConnection() {
-  if (!supabaseClient) {
+  const snapshotApi = getCloudSnapshotApi();
+  if (!snapshotApi?.isConfigured?.()) {
+    cloudSyncState.configured = false;
     cloudSyncState.connected = false;
-    cloudSyncState.lastError = "Supabase niet geconfigureerd";
+    cloudSyncState.lastError = "Snapshot API niet geconfigureerd";
     renderCloudSyncStatus();
     return;
   }
-  try {
-    const { error } = await supabaseClient.auth.getSession();
-    if (error) {
-      throw error;
-    }
-    cloudSyncState.connected = true;
-    cloudSyncState.lastError = "";
-  } catch (error) {
-    cloudSyncState.connected = false;
-    cloudSyncState.lastError = error?.message ?? "connectie mislukt";
-  }
+  cloudSyncState.configured = true;
+  const probe = await snapshotApi.probeSnapshotApi();
+  cloudSyncState.connected = probe.ok;
+  cloudSyncState.lastError = probe.error || "";
   renderCloudSyncStatus();
 }
 
@@ -3942,21 +3945,14 @@ async function hydrateFromCloudSnapshot() {
     ? "Solo mag niet dezelfde kind-ID als Lena gebruiken — maak een aparte child in Supabase."
     : "";
 
-  if (!supabaseClient || !cloudSyncState.connected || !cloudSyncState.syncEligible) {
+  const snapshotApi = getCloudSnapshotApi();
+  if (!canUseCloudSnapshot()) {
     renderCloudSyncStatus();
     return;
   }
 
   try {
-    const { data, error } = await supabaseClient
-      .from("child_budget_snapshots")
-      .select("payload, updated_at")
-      .eq("child_id", ACTIVE_CHILD_ID)
-      .maybeSingle();
-
-    if (error) {
-      throw error;
-    }
+    const data = await snapshotApi.fetchSnapshot(ACTIVE_CHILD_ID);
 
     const localRev = Number(state.syncRevision) || 0;
 
@@ -4026,18 +4022,12 @@ async function hydrateFromCloudSnapshot() {
 }
 
 async function pushCloudSnapshot(options = {}) {
-  if (!supabaseClient || !cloudSyncState.connected || !cloudSyncState.syncEligible) {
+  const snapshotApi = getCloudSnapshotApi();
+  if (!canUseCloudSnapshot()) {
     return;
   }
   try {
-    const { data: remoteRow, error: readError } = await supabaseClient
-      .from("child_budget_snapshots")
-      .select("payload")
-      .eq("child_id", ACTIVE_CHILD_ID)
-      .maybeSingle();
-    if (readError) {
-      throw readError;
-    }
+    const remoteRow = await snapshotApi.fetchSnapshot(ACTIVE_CHILD_ID);
     if (remoteRow?.payload && typeof remoteRow.payload === "object") {
       const compatibility = payloadCompatibleWithCurrentApp(remoteRow.payload);
       if (compatibility.ok) {
@@ -4062,18 +4052,12 @@ async function pushCloudSnapshot(options = {}) {
     ensureCategoryStructures(state);
     stampAppModeOnState(state);
     const payload = JSON.parse(JSON.stringify(state));
-    const { error } = await supabaseClient.from("child_budget_snapshots").upsert(
-      {
-        child_id: ACTIVE_CHILD_ID,
-        family_id: ACTIVE_FAMILY_ID,
-        payload,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "child_id" }
-    );
-    if (error) {
-      throw error;
-    }
+    await snapshotApi.upsertSnapshot({
+      childId: ACTIVE_CHILD_ID,
+      familyId: ACTIVE_FAMILY_ID,
+      payload,
+      updatedAt: new Date().toISOString(),
+    });
     cloudSyncState.lastSyncError = "";
     cloudSyncState.lastSyncedAt = Date.now();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -4087,7 +4071,7 @@ async function pushCloudSnapshot(options = {}) {
 }
 
 function schedulePushCloudSnapshot() {
-  if (!supabaseClient || !cloudSyncState.connected || !cloudSyncState.syncEligible) {
+  if (!canUseCloudSnapshot()) {
     return;
   }
   clearTimeout(cloudPushTimer);

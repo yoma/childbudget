@@ -1,0 +1,6 @@
+# Vercel hosts only the snapshot API. The live app stays on GitHub Pages.
+*
+!api
+!api/**
+!package.json
+!vercel.json
