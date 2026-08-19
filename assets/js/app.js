@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-19-1445";
+const APP_BUILD_VERSION = "2026-08-19-1521";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();

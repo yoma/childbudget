@@ -2196,3 +2196,21 @@ body.app-mode-solo .top-availability-split {
 body.app-mode-solo .balance-inline-overview .tag {
   letter-spacing: 0.02em;
 }
+
+.site-admin-link {
+  text-align: center;
+  margin: 0.4rem 0 1.2rem;
+  font-size: 0.72rem;
+}
+
+.site-admin-link a {
+  color: var(--text-muted);
+  text-decoration: none;
+  opacity: 0.45;
+}
+
+.site-admin-link a:hover,
+.site-admin-link a:focus-visible {
+  opacity: 0.9;
+  text-decoration: underline;
+}
