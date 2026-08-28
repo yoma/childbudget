@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-28-1216";
+const APP_BUILD_VERSION = "2026-08-28-1412";
 const CLOUD_HYDRATE_TIMEOUT_MS = 8000;
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
@@ -320,8 +320,29 @@ function applyCoachBadgeLabel() {
   document.documentElement.style.setProperty("--coach-badge-label", '"Coach"');
 }
 
+function syncLoginParentPicker(parentKey) {
+  const next = parentKey === "papa" ? "papa" : "mama";
+  if (loginParentInput) {
+    loginParentInput.value = next;
+  }
+  document.querySelectorAll(".parent-role-btn").forEach((btn) => {
+    const active = btn.dataset.parent === next;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-checked", String(active));
+  });
+}
+
+function applyFamilyModeDom() {
+  document.body.classList.remove("app-mode-solo");
+  const loginParentField = document.getElementById("loginParentField");
+  loginParentField?.classList.remove("hidden");
+  loginParentInput?.setAttribute("required", "");
+  syncLoginParentPicker(loginParentInput?.value || "mama");
+}
+
 function applySoloModeDom() {
   if (!IS_SOLO_MODE) {
+    applyFamilyModeDom();
     return;
   }
   document.body.classList.add("app-mode-solo");
@@ -335,7 +356,7 @@ function applySoloModeDom() {
   if (pinHelp) {
     pinHelp.textContent = "Voer je PIN in om budget en transacties te beheren.";
   }
-  loginParentInput?.closest("label")?.classList.add("hidden");
+  document.getElementById("loginParentField")?.classList.add("hidden");
   loginParentInput?.removeAttribute("required");
 
   if (parentModeBtn) {
@@ -418,6 +439,64 @@ function applySoloModeDom() {
     ?.classList.add("hidden");
   parentTxFilterParentInput?.closest("label")?.classList.add("hidden");
   txFundingLabel?.classList.add("hidden");
+}
+
+function bindParentPinDialogUi() {
+  document.querySelector(".parent-role-picker")?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const button = target.closest(".parent-role-btn");
+    if (!button) {
+      return;
+    }
+    syncLoginParentPicker(button.dataset.parent);
+  });
+
+  parentModeBtn?.addEventListener("click", () => {
+    if (!IS_SOLO_MODE) {
+      syncLoginParentPicker(loginParentInput?.value || "mama");
+    }
+    parentDialog?.showModal();
+  });
+  cancelPinBtn?.addEventListener("click", () => {
+    if (pinError) {
+      pinError.textContent = "";
+    }
+    if (pinInput) {
+      pinInput.value = "";
+    }
+    if (!IS_SOLO_MODE) {
+      syncLoginParentPicker("mama");
+    }
+    parentDialog?.close();
+  });
+  pinForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const selectedParent = IS_SOLO_MODE ? SOLO_OWNER : loginParentInput?.value;
+    const selectedPin = state.pins?.[selectedParent];
+
+    if (pinInput?.value === selectedPin) {
+      session.loggedInParent = selectedParent;
+      if (pinError) {
+        pinError.textContent = "";
+      }
+      parentDialog?.close();
+      setParentPanelOpen(true);
+      if (pinInput) {
+        pinInput.value = "";
+      }
+      resetTransactionFormState();
+      renderLoggedInParent();
+      syncTxAvailabilityHint();
+      parentPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (pinError) {
+      pinError.textContent = "Foute PIN. Probeer opnieuw.";
+    }
+  });
 }
 
 function getTodayDateInputValue() {
@@ -787,6 +866,7 @@ async function init() {
   ensureCategoryStructures(state);
   applyBranding();
   applySoloModeDom();
+  bindParentPinDialogUi();
   try {
     monthLabelEl.textContent = formatMonth(currentMonth);
     if (budgetMonthInput) {
@@ -848,15 +928,6 @@ async function init() {
   applyResponsiveButtonLabels();
   window.addEventListener("resize", applyResponsiveButtonLabels);
 
-  parentModeBtn.addEventListener("click", () => parentDialog.showModal());
-  cancelPinBtn.addEventListener("click", () => {
-    pinError.textContent = "";
-    pinInput.value = "";
-    if (!IS_SOLO_MODE && loginParentInput) {
-      loginParentInput.value = "mama";
-    }
-    parentDialog.close();
-  });
   closeParentPanelBtn.addEventListener("click", () => setParentPanelOpen(false));
   adminQuickNavEl?.addEventListener("click", (event) => {
     const target = event.target;
@@ -951,26 +1022,6 @@ async function init() {
   refreshCategorySelectors();
   syncTxFundingFieldVisibility();
   syncChildQuickActionsVisibility();
-
-  pinForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const selectedParent = IS_SOLO_MODE ? SOLO_OWNER : loginParentInput.value;
-    const selectedPin = state.pins?.[selectedParent];
-
-    if (pinInput.value === selectedPin) {
-      session.loggedInParent = selectedParent;
-      pinError.textContent = "";
-      parentDialog.close();
-      setParentPanelOpen(true);
-      pinInput.value = "";
-      resetTransactionFormState();
-      renderLoggedInParent();
-      syncTxAvailabilityHint();
-      parentPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
-    pinError.textContent = "Foute PIN. Probeer opnieuw.";
-  });
 
   budgetForm.addEventListener("submit", (event) => {
     event.preventDefault();

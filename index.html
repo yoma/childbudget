@@ -11,7 +11,7 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./assets/css/styles.css?v=2026-08-28-1216" />
+    <link rel="stylesheet" href="./assets/css/styles.css?v=2026-08-28-1412" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
@@ -134,13 +134,17 @@
       <form method="dialog" class="dialog-card" id="pinForm">
         <h3>Ouder-modus</h3>
         <p class="muted">Kies ouder en geef de juiste PIN in.</p>
-        <label>
-          <span>Ik ben</span>
-          <select id="loginParent" required>
+        <div id="loginParentField" class="parent-role-field">
+          <span class="parent-role-label">Ik ben</span>
+          <div class="parent-role-picker" role="radiogroup" aria-label="Kies ouder">
+            <button type="button" class="parent-role-btn is-active" data-parent="mama" role="radio" aria-checked="true">Mama</button>
+            <button type="button" class="parent-role-btn" data-parent="papa" role="radio" aria-checked="false">Papa</button>
+          </div>
+          <select id="loginParent" class="parent-role-select" required tabindex="-1" aria-hidden="true">
             <option value="mama">Mama</option>
             <option value="papa">Papa</option>
           </select>
-        </label>
+        </div>
         <input id="pinInput" type="password" placeholder="••••" required inputmode="numeric" autocomplete="off" />
         <p id="pinError" class="error" role="alert"></p>
         <div class="dialog-actions">
@@ -424,8 +428,8 @@
       </div>
     </section>
 
-    <script src="./assets/js/supabase-config.js?v=2026-08-28-1216"></script>
-    <script src="./assets/js/cloud-snapshot-api.js?v=2026-08-28-1216"></script>
-    <script src="./assets/js/app.js?v=2026-08-28-1216"></script>
+    <script src="./assets/js/supabase-config.js?v=2026-08-28-1412"></script>
+    <script src="./assets/js/cloud-snapshot-api.js?v=2026-08-28-1412"></script>
+    <script src="./assets/js/app.js?v=2026-08-28-1412"></script>
   </body>
 </html>

@@ -1400,6 +1400,7 @@ dialog {
   border: 0;
   padding: 0;
   background: transparent;
+  overflow: visible;
 }
 
 dialog::backdrop {
@@ -1414,6 +1415,62 @@ dialog::backdrop {
   border-radius: var(--radius-card);
   padding: 1.4rem;
   box-shadow: var(--shadow-floating);
+  overflow: visible;
+}
+
+.parent-role-field {
+  position: relative;
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.85rem;
+}
+
+.parent-role-label {
+  font-weight: 500;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.parent-role-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.parent-role-btn {
+  appearance: none;
+  border: 2px solid var(--text);
+  background: #fff;
+  color: var(--text);
+  border-radius: 14px;
+  padding: 0.78rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: var(--shadow-button);
+}
+
+.parent-role-btn.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, #fff);
+  color: var(--accent);
+}
+
+.parent-role-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body.app-mode-solo .parent-role-field {
+  display: none !important;
 }
 
 .budget-source-card {
