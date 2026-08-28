@@ -14,21 +14,36 @@
     };
   }
 
+  const FETCH_TIMEOUT_MS = 8000;
+
   function isConfigured() {
     const { apiUrl, secret } = readConfig();
     return Boolean(apiUrl && secret);
   }
 
-  async function request(path, options) {
+  async function request(path, options = {}) {
     const { apiUrl, secret } = readConfig();
-    const response = await fetch(`${apiUrl}${path}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        "x-snapshot-secret": secret,
-        ...(options.headers ?? {}),
-      },
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(`${apiUrl}${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "x-snapshot-secret": secret,
+          ...(options.headers ?? {}),
+        },
+      });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error("Cloud-timeout");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
     let body = null;
     try {
       body = await response.json();

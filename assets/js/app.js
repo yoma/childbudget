@@ -110,7 +110,8 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-28-1148";
+const APP_BUILD_VERSION = "2026-08-28-1212";
+const CLOUD_HYDRATE_TIMEOUT_MS = 8000;
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -760,6 +761,21 @@ function clearBudgetLoadingUi() {
   renderCloudLinkDot();
 }
 
+function waitMs(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function finishBudgetLoadingUi() {
+  clearBudgetLoadingUi();
+  try {
+    render();
+  } catch (err) {
+    console.warn("Render na cloud-hydrate mislukt", err);
+  }
+}
+
 void init();
 
 // App bootstrap and top-level UI state
@@ -769,15 +785,27 @@ async function init() {
   ensureCategoryStructures(state);
   applyBranding();
   applySoloModeDom();
-  monthLabelEl.textContent = formatMonth(currentMonth);
-  budgetMonthInput.value = currentMonth;
-  txDateInput.value = getTodayDateInputValue();
-  renderLoggedInParent();
-  setParentPanelOpen(false);
+  try {
+    monthLabelEl.textContent = formatMonth(currentMonth);
+    if (budgetMonthInput) {
+      budgetMonthInput.value = currentMonth;
+    }
+    if (txDateInput) {
+      txDateInput.value = getTodayDateInputValue();
+    }
+    renderLoggedInParent();
+    setParentPanelOpen(false);
+  } catch (err) {
+    console.warn("Init setup mislukt", err);
+  }
 
   const waitingOnCloud = expectCloudHydrate();
-  if (!isSparseState(state)) {
-    render();
+  if (hasLocalBudgetData(state)) {
+    try {
+      render();
+    } catch (err) {
+      console.warn("Eerste render mislukt", err);
+    }
     if (waitingOnCloud) {
       showBudgetSyncingHint();
     } else {
@@ -787,13 +815,33 @@ async function init() {
     showBudgetHydrateSkeleton();
   } else {
     clearBudgetLoadingUi();
-    render();
+    try {
+      render();
+    } catch (err) {
+      console.warn("Eerste render mislukt", err);
+    }
   }
 
-  await initializeCloudConnection();
-  await hydrateFromCloudSnapshot();
-  clearBudgetLoadingUi();
-  render();
+  const cloudWork = (async () => {
+    try {
+      await Promise.all([initializeCloudConnection(), hydrateFromCloudSnapshot()]);
+    } catch (err) {
+      cloudSyncState.lastSyncError = err?.message ?? String(err);
+      console.warn("Cloud hydrate mislukt", err);
+    }
+  })();
+
+  try {
+    await Promise.race([cloudWork, waitMs(CLOUD_HYDRATE_TIMEOUT_MS)]);
+  } finally {
+    finishBudgetLoadingUi();
+  }
+
+  void cloudWork.then(() => {
+    finishBudgetLoadingUi();
+    renderBuildMeta();
+  });
+
   renderBuildMeta();
   applyResponsiveButtonLabels();
   window.addEventListener("resize", applyResponsiveButtonLabels);
@@ -1315,7 +1363,7 @@ function getCloudSnapshotApi() {
 }
 
 function canUseCloudSnapshot() {
-  return Boolean(getCloudSnapshotApi()?.isConfigured?.()) && cloudSyncState.connected && cloudSyncState.syncEligible;
+  return Boolean(getCloudSnapshotApi()?.isConfigured?.()) && cloudSyncState.syncEligible;
 }
 
 async function initializeCloudConnection() {
@@ -1496,10 +1544,12 @@ function render() {
   });
 
   const totalRemaining = sum(categoryData.map((c) => c.totalRemaining));
-  totalRemainingEl.classList.remove("is-skeleton");
-  totalRemainingEl.textContent = currency.format(totalRemaining);
-  totalRemainingEl.classList.toggle("positive", totalRemaining >= 0);
-  totalRemainingEl.classList.toggle("negative", totalRemaining < 0);
+  if (totalRemainingEl) {
+    totalRemainingEl.classList.remove("is-skeleton");
+    totalRemainingEl.textContent = currency.format(totalRemaining);
+    totalRemainingEl.classList.toggle("positive", totalRemaining >= 0);
+    totalRemainingEl.classList.toggle("negative", totalRemaining < 0);
+  }
   renderTopAvailability(categoryData);
   renderClearOverview(categoryData);
   renderCoachAlerts();
@@ -1774,6 +1824,9 @@ function getSpeedMood(speedRatio) {
 
 // Lena Coach and parent coach settings
 function renderCoachAlerts() {
+  if (!coachAlertsEl) {
+    return;
+  }
   pruneExpiredParentMessages();
   const autoAlerts = buildAutomaticCoachAlerts();
   const parentAlerts = buildParentMessageAlerts();
@@ -3185,7 +3238,7 @@ function createLinkedCategoryTransfers({ date, month, targetCategory, usage, toP
 // Charts and category simulation engine
 function renderChart(categoryData) {
   const canvas = document.getElementById("budgetChart");
-  if (!canvas) {
+  if (!canvas || typeof Chart !== "function") {
     return;
   }
   const timeline = mergeTimelines(categoryData);
@@ -4079,6 +4132,17 @@ function isSparseState(stateRef) {
   return stateContentScore(stateRef) < 8;
 }
 
+function hasLocalBudgetData(stateRef) {
+  if (!stateRef || typeof stateRef !== "object") {
+    return false;
+  }
+  if (Array.isArray(stateRef.transactions) && stateRef.transactions.length > 0) {
+    return true;
+  }
+  const categoryCount = Array.isArray(stateRef.categories) ? stateRef.categories.length : 0;
+  return stateContentScore(stateRef) > categoryCount;
+}
+
 async function hydrateFromCloudSnapshot() {
   cloudSyncState.syncEligible =
     looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID) && !CLOUD_SYNC_BLOCKED;
@@ -4094,12 +4158,13 @@ async function hydrateFromCloudSnapshot() {
 
   try {
     const data = await snapshotApi.fetchSnapshot(ACTIVE_CHILD_ID);
+    cloudSyncState.connected = true;
 
     const localRev = Number(state.syncRevision) || 0;
 
     if (!data?.payload || typeof data.payload !== "object") {
       if (!isSparseState(state)) {
-        await pushCloudSnapshot({ silent: true });
+        void pushCloudSnapshot({ silent: true });
       }
       cloudSyncState.lastSyncedAt = Date.now();
       renderCloudSyncStatus();
@@ -4112,7 +4177,7 @@ async function hydrateFromCloudSnapshot() {
       if (IS_SOLO_MODE && remoteMode === "family") {
         // Nooit een lege solo-state over echte family-clouddata pushen.
         if (!isSparseState(state)) {
-          await pushCloudSnapshot({ silent: true });
+          void pushCloudSnapshot({ silent: true });
         }
         if (!cloudSyncState.lastSyncError) {
           cloudSyncState.lastSyncedAt = Date.now();
@@ -4151,12 +4216,13 @@ async function hydrateFromCloudSnapshot() {
         renderCloudSyncStatus();
         return;
       }
-      await pushCloudSnapshot({ silent: true });
+      void pushCloudSnapshot({ silent: true });
       cloudSyncState.lastSyncedAt = Date.now();
     } else {
       cloudSyncState.lastSyncedAt = new Date(data.updated_at).getTime();
     }
   } catch (err) {
+    cloudSyncState.connected = false;
     cloudSyncState.lastSyncError = err?.message ?? String(err);
   }
   renderCloudSyncStatus();
