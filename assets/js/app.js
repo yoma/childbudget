@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-28-1036";
+const APP_BUILD_VERSION = "2026-08-28-1148";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -547,6 +547,8 @@ const chartRef = { instance: null };
 
 const totalRemainingEl = document.getElementById("totalRemaining");
 const monthLabelEl = document.getElementById("monthLabel");
+const cloudLoadHintEl = document.getElementById("cloudLoadHint");
+const balanceCardEl = document.getElementById("balanceCard");
 const topAvailabilityBreakdownEl = document.getElementById("topAvailabilityBreakdown");
 const coachAlertsEl = document.getElementById("coachAlerts");
 const speedRingsEl = document.getElementById("speedRings");
@@ -559,6 +561,7 @@ const heroEyebrowEl = document.getElementById("heroEyebrow");
 const heroGreetingEl = document.getElementById("heroGreeting");
 const parentMessageLabelEl = document.getElementById("parentMessageLabel");
 const childViewEl = document.getElementById("childView");
+const cloudLinkDotEl = document.getElementById("cloudLinkDot");
 const parentModeBtn = document.getElementById("parentModeBtn");
 const parentDialog = document.getElementById("parentDialog");
 const pinForm = document.getElementById("pinForm");
@@ -665,6 +668,98 @@ const cloudSyncState = {
 let cloudPushTimer = null;
 const supabaseClient = createSupabaseClient();
 
+function expectCloudHydrate() {
+  return (
+    Boolean(getCloudSnapshotApi()?.isConfigured?.()) &&
+    looksLikeUuid(ACTIVE_CHILD_ID) &&
+    looksLikeUuid(ACTIVE_FAMILY_ID) &&
+    !CLOUD_SYNC_BLOCKED
+  );
+}
+
+function getHydrateSkeletonMarkup() {
+  const categoryCard = (accent) => `
+    <article class="category-card skeleton-card" style="--cat-accent:${accent};" aria-hidden="true">
+      <div class="category-card-head">
+        <span class="skeleton-block skeleton-line skeleton-line-name"></span>
+        <span class="skeleton-block skeleton-line skeleton-line-value"></span>
+      </div>
+      <div class="skeleton-block skeleton-bar"></div>
+      <div class="category-card-meta">
+        <span class="skeleton-block skeleton-line skeleton-line-meta"></span>
+        <span class="skeleton-block skeleton-line skeleton-line-chip"></span>
+      </div>
+    </article>
+  `;
+  return {
+    amount: `<span class="skeleton-block skeleton-amount" aria-hidden="true"></span><span class="visually-hidden">Laden...</span>`,
+    categories:
+      categoryCard("var(--accent-zakgeld)") + categoryCard("var(--accent-kleding)"),
+    coach: `
+      <article class="coach-item skeleton-coach" aria-hidden="true">
+        <span class="skeleton-block skeleton-line skeleton-line-title"></span>
+        <span class="skeleton-block skeleton-line"></span>
+        <span class="skeleton-block skeleton-line skeleton-line-short"></span>
+      </article>
+    `,
+  };
+}
+
+function setCloudLoadHint(text) {
+  if (!cloudLoadHintEl) {
+    return;
+  }
+  if (!text) {
+    cloudLoadHintEl.hidden = true;
+    cloudLoadHintEl.textContent = "";
+    return;
+  }
+  cloudLoadHintEl.hidden = false;
+  cloudLoadHintEl.textContent = text;
+}
+
+function showBudgetHydrateSkeleton() {
+  document.body.classList.add("is-budget-loading");
+  document.body.classList.remove("is-budget-syncing");
+  balanceCardEl?.setAttribute("aria-busy", "true");
+  if (totalRemainingEl) {
+    totalRemainingEl.classList.add("is-skeleton");
+    totalRemainingEl.classList.remove("positive", "negative");
+    totalRemainingEl.innerHTML = getHydrateSkeletonMarkup().amount;
+  }
+  if (topAvailabilityBreakdownEl) {
+    topAvailabilityBreakdownEl.innerHTML = getHydrateSkeletonMarkup().categories;
+  }
+  if (coachAlertsEl) {
+    coachAlertsEl.classList.add("is-skeleton");
+    coachAlertsEl.setAttribute("aria-busy", "true");
+    coachAlertsEl.innerHTML = getHydrateSkeletonMarkup().coach;
+  }
+  setCloudLoadHint("Laden...");
+  renderCloudLinkDot();
+}
+
+function showBudgetSyncingHint() {
+  document.body.classList.remove("is-budget-loading");
+  document.body.classList.add("is-budget-syncing");
+  balanceCardEl?.removeAttribute("aria-busy");
+  totalRemainingEl?.classList.remove("is-skeleton");
+  coachAlertsEl?.classList.remove("is-skeleton");
+  coachAlertsEl?.removeAttribute("aria-busy");
+  setCloudLoadHint("Even syncen...");
+  renderCloudLinkDot();
+}
+
+function clearBudgetLoadingUi() {
+  document.body.classList.remove("is-budget-loading", "is-budget-syncing");
+  balanceCardEl?.removeAttribute("aria-busy");
+  totalRemainingEl?.classList.remove("is-skeleton");
+  coachAlertsEl?.classList.remove("is-skeleton");
+  coachAlertsEl?.removeAttribute("aria-busy");
+  setCloudLoadHint("");
+  renderCloudLinkDot();
+}
+
 void init();
 
 // App bootstrap and top-level UI state
@@ -679,8 +774,26 @@ async function init() {
   txDateInput.value = getTodayDateInputValue();
   renderLoggedInParent();
   setParentPanelOpen(false);
+
+  const waitingOnCloud = expectCloudHydrate();
+  if (!isSparseState(state)) {
+    render();
+    if (waitingOnCloud) {
+      showBudgetSyncingHint();
+    } else {
+      clearBudgetLoadingUi();
+    }
+  } else if (waitingOnCloud) {
+    showBudgetHydrateSkeleton();
+  } else {
+    clearBudgetLoadingUi();
+    render();
+  }
+
   await initializeCloudConnection();
   await hydrateFromCloudSnapshot();
+  clearBudgetLoadingUi();
+  render();
   renderBuildMeta();
   applyResponsiveButtonLabels();
   window.addEventListener("resize", applyResponsiveButtonLabels);
@@ -1086,12 +1199,41 @@ async function init() {
 }
 
 function renderBuildMeta() {
-  if (!appBuildMetaEl) {
+  if (appBuildMetaEl) {
+    const now = new Date();
+    const cloudMeta = getCloudBuildMeta();
+    appBuildMetaEl.innerHTML = `<span class="build-status-dot ${cloudMeta.dotClass}" aria-hidden="true"></span>Build ${APP_BUILD_VERSION} · geladen ${now.toLocaleString("nl-BE")} · ${cloudMeta.label}`;
+  }
+  renderCloudLinkDot();
+}
+
+function getCloudLinkIndicator() {
+  const stillLoading =
+    document.body.classList.contains("is-budget-loading") ||
+    document.body.classList.contains("is-budget-syncing");
+  if (stillLoading) {
+    return { state: "syncing", label: "Even syncen" };
+  }
+  const linked =
+    cloudSyncState.configured &&
+    cloudSyncState.connected &&
+    cloudSyncState.syncEligible &&
+    !cloudSyncState.lastSyncError;
+  if (linked) {
+    return { state: "online", label: "Koppeling actief" };
+  }
+  return { state: "offline", label: "Niet gekoppeld" };
+}
+
+function renderCloudLinkDot() {
+  if (!cloudLinkDotEl) {
     return;
   }
-  const now = new Date();
-  const cloudMeta = getCloudBuildMeta();
-  appBuildMetaEl.innerHTML = `<span class="build-status-dot ${cloudMeta.dotClass}" aria-hidden="true"></span>Build ${APP_BUILD_VERSION} · geladen ${now.toLocaleString("nl-BE")} · ${cloudMeta.label}`;
+  const indicator = getCloudLinkIndicator();
+  cloudLinkDotEl.classList.remove("is-online", "is-syncing", "is-offline");
+  cloudLinkDotEl.classList.add(`is-${indicator.state}`);
+  cloudLinkDotEl.title = indicator.label;
+  cloudLinkDotEl.setAttribute("aria-label", indicator.label);
 }
 
 function applyResponsiveButtonLabels() {
@@ -1354,6 +1496,7 @@ function render() {
   });
 
   const totalRemaining = sum(categoryData.map((c) => c.totalRemaining));
+  totalRemainingEl.classList.remove("is-skeleton");
   totalRemainingEl.textContent = currency.format(totalRemaining);
   totalRemainingEl.classList.toggle("positive", totalRemaining >= 0);
   totalRemainingEl.classList.toggle("negative", totalRemaining < 0);
@@ -1635,6 +1778,8 @@ function renderCoachAlerts() {
   const autoAlerts = buildAutomaticCoachAlerts();
   const parentAlerts = buildParentMessageAlerts();
   const alerts = state.coachSettings.autoCoachEnabled ? [...parentAlerts, ...autoAlerts] : parentAlerts;
+  coachAlertsEl.classList.remove("is-skeleton");
+  coachAlertsEl.removeAttribute("aria-busy");
   coachAlertsEl.innerHTML = "";
 
   alerts.forEach((alert) => {

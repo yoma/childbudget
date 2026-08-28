@@ -11,11 +11,11 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./assets/css/styles.css?v=2026-08-28-1105" />
+    <link rel="stylesheet" href="./assets/css/styles.css?v=2026-08-28-1148" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
-  <body>
+  <body class="is-budget-loading">
     <div class="bg-glow"></div>
 
     <main id="childView" class="container">
@@ -24,22 +24,66 @@
           <p id="heroEyebrow" class="eyebrow">Budget</p>
           <h1 id="heroGreeting">Lena</h1>
         </div>
-        <button id="parentModeBtn" class="btn-icon" aria-label="Ouder-modus" title="Ouder-modus">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        </button>
+        <div class="hero-actions">
+          <span
+            id="cloudLinkDot"
+            class="cloud-link-dot is-syncing"
+            role="status"
+            title="Even syncen"
+            aria-label="Even syncen"
+          ></span>
+          <button id="parentModeBtn" class="btn-icon" aria-label="Ouder-modus" title="Ouder-modus">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </button>
+        </div>
       </header>
 
-      <article class="balance-card">
+      <article id="balanceCard" class="balance-card" aria-busy="true">
         <p class="balance-label">Beschikbaar</p>
-        <p id="totalRemaining" class="balance-amount" aria-live="polite">€ 0,00</p>
-        <p id="monthLabel" class="balance-month"></p>
-        <div id="topAvailabilityBreakdown" class="category-cards"></div>
+        <p id="totalRemaining" class="balance-amount is-skeleton" aria-live="polite">
+          <span class="skeleton-block skeleton-amount" aria-hidden="true"></span>
+          <span class="visually-hidden">Laden...</span>
+        </p>
+        <div class="balance-month-row">
+          <p id="monthLabel" class="balance-month"></p>
+          <p id="cloudLoadHint" class="cloud-load-hint" role="status">Laden...</p>
+        </div>
+        <div id="topAvailabilityBreakdown" class="category-cards">
+          <article class="category-card skeleton-card" style="--cat-accent:var(--accent-zakgeld);" aria-hidden="true">
+            <div class="category-card-head">
+              <span class="skeleton-block skeleton-line skeleton-line-name"></span>
+              <span class="skeleton-block skeleton-line skeleton-line-value"></span>
+            </div>
+            <div class="skeleton-block skeleton-bar"></div>
+            <div class="category-card-meta">
+              <span class="skeleton-block skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-block skeleton-line skeleton-line-chip"></span>
+            </div>
+          </article>
+          <article class="category-card skeleton-card" style="--cat-accent:var(--accent-kleding);" aria-hidden="true">
+            <div class="category-card-head">
+              <span class="skeleton-block skeleton-line skeleton-line-name"></span>
+              <span class="skeleton-block skeleton-line skeleton-line-value"></span>
+            </div>
+            <div class="skeleton-block skeleton-bar"></div>
+            <div class="category-card-meta">
+              <span class="skeleton-block skeleton-line skeleton-line-meta"></span>
+              <span class="skeleton-block skeleton-line skeleton-line-chip"></span>
+            </div>
+          </article>
+        </div>
       </article>
 
-      <section id="coachAlerts" class="coach-alerts"></section>
+      <section id="coachAlerts" class="coach-alerts is-skeleton" aria-busy="true">
+        <article class="coach-item skeleton-coach" aria-hidden="true">
+          <span class="skeleton-block skeleton-line skeleton-line-title"></span>
+          <span class="skeleton-block skeleton-line"></span>
+          <span class="skeleton-block skeleton-line skeleton-line-short"></span>
+        </article>
+      </section>
 
       <nav id="childQuickActions" class="child-quick-actions" aria-label="Snelle acties">
         <button type="button" id="openTransactionsBtn" class="child-quick-action-btn">Transacties</button>
@@ -124,7 +168,7 @@
             <h2>Ouder-beheer</h2>
             <p id="loggedInAs" class="muted"></p>
             <p id="cloudSyncStatus" class="muted"></p>
-            <p id="appBuildMeta" class="build-pill app-build-pill">Build 2026-08-28-1036 · wacht op initialisatie...</p>
+            <p id="appBuildMeta" class="build-pill app-build-pill">Build 2026-08-28-1148 · wacht op initialisatie...</p>
           </div>
           <div class="panel-actions">
             <button id="resetAllDataBtn" class="btn btn-ghost hidden" type="button" data-label-desktop="Alles wissen (test)" data-label-mobile="Wis testdata">Alles wissen (test)</button>
@@ -377,8 +421,8 @@
       </div>
     </section>
 
-    <script src="./assets/js/supabase-config.js?v=2026-08-28-1036"></script>
-    <script src="./assets/js/cloud-snapshot-api.js?v=2026-08-28-1036"></script>
-    <script src="./assets/js/app.js?v=2026-08-28-1036"></script>
+    <script src="./assets/js/supabase-config.js?v=2026-08-28-1148"></script>
+    <script src="./assets/js/cloud-snapshot-api.js?v=2026-08-28-1148"></script>
+    <script src="./assets/js/app.js?v=2026-08-28-1148"></script>
   </body>
 </html>
