@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-19-1521";
+const APP_BUILD_VERSION = "2026-08-28-1001";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -316,8 +316,7 @@ function normalizeStateForSolo(stateRef) {
 }
 
 function applyCoachBadgeLabel() {
-  const label = `${CHILD_NAME.toUpperCase()} COACH`;
-  document.documentElement.style.setProperty("--coach-badge-label", `"${label}"`);
+  document.documentElement.style.setProperty("--coach-badge-label", '"Coach"');
 }
 
 function applySoloModeDom() {
@@ -348,7 +347,7 @@ function applySoloModeDom() {
     panelTitle.textContent = `${CHILD_NAME} — beheer`;
   }
 
-  const overviewTag = document.querySelector(".balance-inline-overview .tag");
+  const overviewTag = document.getElementById("monthOverviewTag");
   if (overviewTag) {
     overviewTag.textContent = "Jouw budget";
   }
@@ -742,6 +741,9 @@ async function init() {
   toggleDetailsBtn.addEventListener("click", () => {
     const isHidden = extraInsightsEl.classList.toggle("hidden");
     setDetailsButtonText(isHidden);
+    if (!isHidden) {
+      refreshBudgetChartSize();
+    }
   });
   openTransactionsBtn?.addEventListener("click", openChildTransactionsSection);
   autoRenewOverviewEl.addEventListener("click", handleAutoRenewActionClick);
@@ -1068,7 +1070,7 @@ async function init() {
     parentMessageInput.value = "";
     setParentMessageStatus(
       message
-        ? `Boodschap doorgestuurd voor ${days} dag${days === 1 ? "" : "en"} 💜`
+        ? `Boodschap doorgestuurd voor ${days} dag${days === 1 ? "" : "en"}.`
         : "Coach-instellingen opgeslagen.",
       true
     );
@@ -1140,16 +1142,14 @@ function applyBranding() {
     appTitleEl.textContent = APP_NAME;
   }
   if (heroEyebrowEl) {
-    heroEyebrowEl.textContent = APP_NAME;
+    heroEyebrowEl.textContent = "Budget";
   }
   if (heroGreetingEl) {
-    heroGreetingEl.innerHTML = `Hey ${escapeHtml(CHILD_NAME)} <span class="wave">✨</span>`;
+    heroGreetingEl.textContent = CHILD_NAME;
   }
   const heroSub = document.querySelector(".hero-sub");
   if (heroSub) {
-    heroSub.textContent = IS_SOLO_MODE
-      ? "Jouw budget, in één oogopslag."
-      : "Jouw budget in 1 oogopslag.";
+    heroSub.textContent = "";
   }
   if (parentMessageLabelEl && !IS_SOLO_MODE) {
     parentMessageLabelEl.textContent = `Jouw boodschap voor ${CHILD_NAME}`;
@@ -1255,6 +1255,7 @@ function applyInitialViewMode() {
   if (viewMode === "ouder") {
     extraInsightsEl.classList.remove("hidden");
     setDetailsButtonText(false);
+    refreshBudgetChartSize();
     return;
   }
 
@@ -1277,6 +1278,15 @@ function setParentPanelOpen(isOpen) {
   syncChildQuickActionsVisibility();
 }
 
+function refreshBudgetChartSize() {
+  if (extraInsightsEl?.classList.contains("hidden")) {
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    chartRef.instance?.resize();
+  });
+}
+
 function setDetailsButtonText(isHidden) {
   toggleDetailsBtn.textContent = isHidden ? "Toon extra details" : "Verberg extra details";
 }
@@ -1287,6 +1297,7 @@ function openChildTransactionsSection() {
   }
   extraInsightsEl.classList.remove("hidden");
   setDetailsButtonText(false);
+  refreshBudgetChartSize();
   window.requestAnimationFrame(() => {
     const target = childTransactionsCardEl ?? document.getElementById("transactionList");
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1347,9 +1358,7 @@ function render() {
   totalRemainingEl.classList.toggle("positive", totalRemaining >= 0);
   totalRemainingEl.classList.toggle("negative", totalRemaining < 0);
   renderTopAvailability(categoryData);
-
   renderClearOverview(categoryData);
-  renderSpeedRings();
   renderCoachAlerts();
   renderParentReadAlerts();
   renderParentCoachSummary();
@@ -1514,17 +1523,37 @@ function handleAutoRenewActionClick(event) {
 
 // Top Lena dashboard blocks
 function renderTopAvailability(categoryData) {
+  if (!topAvailabilityBreakdownEl) {
+    return;
+  }
+  const todayDate = new Date();
+  const daysInMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
+  const elapsedRatio = todayDate.getDate() / Math.max(daysInMonth, 1);
+
   topAvailabilityBreakdownEl.innerHTML = categoryData
     .map((entry) => {
       const split = getParentRemainingSplit(entry.category, currentMonth);
+      const usage = getCurrentMonthUsage(entry.category);
+      const speedRatio = elapsedRatio > 0 ? usage.usedRatio / elapsedRatio : 0;
+      const mood = getSpeedMood(speedRatio);
+      const paceText = mood === "slow" ? "Rustig tempo" : mood === "fast" ? "Snel tempo" : "Op schema";
+      const usedPercent = Math.min(Math.max(usage.usedRatio * 100, 0), 100);
+      const accent = getCategoryColor(entry.category);
       return `
-        <div class="top-availability-pill ${entry.category}">
-          <div class="top-availability-pill-head">
-            <span class="top-availability-pill-title">${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}</span>
-            <strong class="top-availability-pill-total ${entry.totalRemaining >= 0 ? "positive" : "negative"}">${currency.format(entry.totalRemaining)}</strong>
+        <article class="category-card" style="--cat-accent:${accent};">
+          <div class="category-card-head">
+            <span class="category-card-name">${getCategoryEmoji(entry.category)} ${escapeHtml(humanCategory(entry.category))}</span>
+            <strong class="category-card-amount ${entry.totalRemaining >= 0 ? "positive" : "negative"}">${currency.format(entry.totalRemaining)}</strong>
           </div>
-          ${renderOwnerSplitHtml(split, "top-availability-split")}
-        </div>
+          <div class="category-card-bar" aria-hidden="true">
+            <span class="category-card-bar-fill" style="width:${usedPercent}%"></span>
+          </div>
+          <div class="category-card-meta">
+            <span>${paceText}</span>
+            <span>${Math.round(usedPercent)}% gebruikt</span>
+          </div>
+          ${renderOwnerSplitHtml(split, "category-card-split")}
+        </article>
       `;
     })
     .join("");
@@ -1553,7 +1582,9 @@ function renderSpeedRingSvg(usedPercent, accentColor) {
 }
 
 function renderSpeedRings() {
-  const todayDate = new Date();
+  if (!speedRingsEl) {
+    return;
+  }
   const elapsedRatio = todayDate.getDate() / new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
   const categories = getEnabledCategoryIds();
 
@@ -1631,14 +1662,14 @@ function renderCoachAckHtml(parentKey) {
     return `
       <div class="coach-ack coach-ack-done" aria-live="polite">
         <button type="button" class="coach-thumbs-btn is-active" disabled aria-pressed="true" aria-label="Bericht gelezen">👍</button>
-        <p class="coach-ack-hint coach-ack-hint-done">${IS_SOLO_MODE ? "We weten dat je het hebt gelezen 💜" : "Mama en papa weten dat je het hebt gelezen 💜"}</p>
+        <p class="coach-ack-hint coach-ack-hint-done">${IS_SOLO_MODE ? "Gelezen." : "Mama en papa zien dat je het gelezen hebt."}</p>
       </div>
     `;
   }
   return `
     <div class="coach-ack">
       <button type="button" class="coach-thumbs-btn" data-coach-ack-parent="${parentKey}" aria-label="Bericht gelezen markeren">👍</button>
-      <p class="coach-ack-hint">Geef een duim als je het gelezen hebt — dan weten ${IS_SOLO_MODE ? "we" : "mama en papa"} dat je het gezien hebt 💜</p>
+      <p class="coach-ack-hint">Tik als je het gelezen hebt${IS_SOLO_MODE ? "." : ", dan zien mama en papa het."}</p>
     </div>
   `;
 }
@@ -1700,15 +1731,15 @@ function buildAutomaticCoachAlerts() {
 
   if (alerts.length === 0) {
     const positiveTemplates = [
-      "Je bent top bezig 💜 Je houdt mooi balans tussen genieten en sparen.",
-      "Nice! 🌟 Je budgettempo is gezond. Zo hou je aan het einde van de maand nog keuze over.",
-      "Lekker bezig 😎 Je uitgaven zijn onder controle, hou dit ritme vast.",
+      "Je tempo zit goed. Er blijft ruimte over deze maand.",
+      "Uitgaven liggen op schema. Zo hou je later nog keuze.",
+      "Rustig ritme. Je budget blijft onder controle.",
     ];
     const idx = getStableIndex(`positive-${currentMonth}-${dayOfMonth}`, positiveTemplates.length);
     return [
       {
         toneClass: "coach-soft",
-        title: `🌸 ${CHILD_NAME} Coach`,
+        title: "Alles op schema",
         text: positiveTemplates[idx],
       },
     ];
@@ -1763,80 +1794,44 @@ function createCoachMessage(category, severity, ratio, remaining, dayOfMonth) {
   const templates = {
     soft: [
       {
-        title: `💡 Zachte reminder (${label})`,
-        text: `Je hebt al ${ratioText}% gebruikt. Je hebt nog ${remainingText} over, dus rustig verder en je komt er wel ✨`,
+        title: `Tip · ${label}`,
+        text: `${ratioText}% is al gebruikt. Er blijft ${remainingText} over, dus je hebt nog speelruimte.`,
       },
       {
-        title: `🌼 Slimme tip voor ${label}`,
-        text: `${ratioText}% is gebruikt en er blijft ${remainingText} over. Mini challenge: nog wat marge bewaren 💜`,
+        title: `Check-in · ${label}`,
+        text: `Je zit op ${ratioText}%. Als je nu bewust kiest, blijft ${remainingText} over.`,
       },
       {
-        title: `🫶 Kleine check-in (${label})`,
-        text: `Je hebt ${ratioText}% gebruikt. Als je nu slim kiest, blijft er nog mooi ${remainingText} over.`,
-      },
-      {
-        title: `🎯 Budget level-up`,
-        text: `${label} zit op ${ratioText}%. Tiny focus nu = later nog fun met ${remainingText}.`,
-      },
-      {
-        title: `🌈 Je kan dit perfect`,
-        text: `${ratioText}% gebruikt is ok, let gewoon op je tempo zodat ${remainingText} je buffer blijft.`,
-      },
-      {
-        title: `🍀 Lieve reminder`,
-        text: `${label}: ${ratioText}% gebruikt. Nog ${remainingText} over, dus je hebt nog speelruimte.`,
+        title: `Tempo · ${label}`,
+        text: `${ratioText}% gebruikt is oké. Hou ${remainingText} als buffer voor later in de maand.`,
       },
     ],
     warning: [
       {
-        title: `⚠️ ${CHILD_NAME}, je gaat snel op ${label}`,
-        text: `Je zit al aan ${ratioText}% deze maand. Misschien even pauze op shopping zodat je nog ${remainingText} overhoudt 😇`,
+        title: `Let op · ${label}`,
+        text: `Al ${ratioText}% deze maand. Even vertragen helpt om ${remainingText} over te houden.`,
       },
       {
-        title: `🚦 Even vertragen (${label})`,
-        text: `Al ${ratioText}% gebruikt terwijl de maand nog bezig is. You got this: mik op minstens ${remainingText} over 🙌`,
+        title: `Snel tempo · ${label}`,
+        text: `Je zit op ${ratioText}%. Een paar rustigere dagen houdt ${remainingText} over.`,
       },
       {
-        title: `📉 Snelle update (${label})`,
-        text: `Je zit nu op ${ratioText}%. Als je een paar dagen rustiger gaat, hou je nog ${remainingText} over.`,
-      },
-      {
-        title: `🧠 Slimme move?`,
-        text: `${ratioText}% is al weg in ${label}. Even remmen nu = minder stress later in de maand.`,
-      },
-      {
-        title: `💬 Team ${CHILD_NAME} tip`,
-        text: `${label} gaat deze maand snel. Doel voor de rest van de maand: nog ${remainingText} sparen.`,
-      },
-      {
-        title: `🛍️ Shop-balance alert`,
-        text: `${ratioText}% verbruikt. Misschien nu 1 aankoop skippen en je houdt meer over tegen maand-einde.`,
+        title: `Update · ${label}`,
+        text: `${ratioText}% is al weg. Doel voor de rest van de maand: ${remainingText} bewaren.`,
       },
     ],
     danger: [
       {
-        title: `🛑 Bijna op: ${label}`,
-        text: `Je zit op ${ratioText}%. Tijd voor no-spend mode zodat je niet zonder budget valt voor het einde van de maand 💗`,
+        title: `Bijna op · ${label}`,
+        text: `${ratioText}% gebruikt. Tijd om extra voorzichtig te zijn tot het einde van de maand.`,
       },
       {
-        title: `🔥 Hoog tempo op ${label}`,
-        text: `${ratioText}% verbruikt. Budget-pauze aanzetten en terug wat marge opbouwen, queen 👑`,
+        title: `Hoog tempo · ${label}`,
+        text: `${ratioText}% verbruikt en we zijn pas dag ${dayOfMonth}. Even pauzeren beschermt wat er nog rest.`,
       },
       {
-        title: `🚨 Noodrem op ${label}`,
-        text: `${ratioText}% gebruikt en we zijn pas dag ${dayOfMonth}. Mini no-spend challenge tot volgende week?`,
-      },
-      {
-        title: `🧯 Even stabiliseren`,
-        text: `${label} staat onder druk (${ratioText}%). Nu even basics-only helpt je maand redden.`,
-      },
-      {
-        title: `💥 Bijna door je budget`,
-        text: `Je bent al op ${ratioText}% voor ${label}. Tijd om je resterende budget extra te beschermen.`,
-      },
-      {
-        title: `🪫 Budget batterij laag`,
-        text: `${label} zit al op ${ratioText}%. Schakel naar rustige modus zodat je niet volledig leegloopt.`,
+        title: `Budget laag · ${label}`,
+        text: `Je zit op ${ratioText}%. Bescherm het resterende bedrag tot de volgende maand.`,
       },
     ],
   };
@@ -1857,7 +1852,7 @@ function buildParentMessageAlerts() {
     if (messages[SOLO_OWNER]?.text) {
       alerts.push({
         toneClass: "coach-soft",
-        title: "💌 Herinnering",
+        title: "Herinnering",
         text: escapeHtml(messages[SOLO_OWNER].text),
         showCoachTag: false,
         parentKey: SOLO_OWNER,
@@ -1868,7 +1863,7 @@ function buildParentMessageAlerts() {
   if (messages.mama?.text) {
     alerts.push({
       toneClass: "coach-soft",
-      title: "💌 Bericht van mama",
+      title: "Bericht van mama",
       text: escapeHtml(messages.mama.text),
       showCoachTag: false,
       parentKey: "mama",
@@ -1877,7 +1872,7 @@ function buildParentMessageAlerts() {
   if (messages.papa?.text) {
     alerts.push({
       toneClass: "coach-soft",
-      title: "💌 Bericht van papa",
+      title: "Bericht van papa",
       text: escapeHtml(messages.papa.text),
       showCoachTag: false,
       parentKey: "papa",
@@ -1889,7 +1884,7 @@ function buildParentMessageAlerts() {
 function personalizeAutomaticCoachText(text) {
   const rawText = typeof text === "string" ? text.trim() : "";
   if (!rawText) {
-    return `${CHILD_NAME}, je bent goed bezig 💜`;
+    return `${CHILD_NAME}, je tempo zit goed.`;
   }
   const lowerName = CHILD_NAME.toLowerCase();
   if (new RegExp(`^${lowerName}\\b`, "i").test(rawText)) {
@@ -2522,7 +2517,6 @@ function renderBreakdown(categoryData) {
   if (!hasAnyData) {
     rolloverBreakdownEl.innerHTML = `
       <div class="empty-state">
-        <div class="empty-emoji">🌸</div>
         <p class="muted">Nog niets over van vorige maand(en)</p>
       </div>
     `;
@@ -2563,7 +2557,6 @@ function renderTransactions() {
   if (recentItems.length === 0) {
     transactionListEl.innerHTML = `
       <div class="empty-state">
-        <div class="empty-emoji">✨</div>
         <p class="muted">Nog geen transacties</p>
       </div>
     `;
@@ -3047,6 +3040,9 @@ function createLinkedCategoryTransfers({ date, month, targetCategory, usage, toP
 // Charts and category simulation engine
 function renderChart(categoryData) {
   const canvas = document.getElementById("budgetChart");
+  if (!canvas) {
+    return;
+  }
   const timeline = mergeTimelines(categoryData);
   const labels = timeline.map((item) => formatMonthShort(item.month));
   const totals = timeline.map((item) => round2(item.total));
@@ -3058,9 +3054,9 @@ function renderChart(categoryData) {
   const finalLabels = labels.length > 0 ? labels : [formatMonthShort(currentMonth)];
   const finalData = totals.length > 0 ? totals : [0];
   const ctx = canvas.getContext("2d");
-  const gradient = ctx.createLinearGradient(0, 0, 0, 130);
-  gradient.addColorStop(0, "rgba(214, 168, 238, 0.32)");
-  gradient.addColorStop(1, "rgba(244, 194, 220, 0.02)");
+  const gradient = ctx.createLinearGradient(0, 0, 0, 140);
+  gradient.addColorStop(0, "rgba(79, 61, 134, 0.18)");
+  gradient.addColorStop(1, "rgba(79, 61, 134, 0.01)");
 
   chartRef.instance = new Chart(canvas, {
     type: "line",
@@ -3070,13 +3066,13 @@ function renderChart(categoryData) {
         {
           label: "Totaal",
           data: finalData,
-          borderColor: "#c89bea",
+          borderColor: "#4f3d86",
           backgroundColor: gradient,
-          borderWidth: 2.5,
-          borderDash: [6, 6],
+          borderWidth: 2,
+          borderDash: [],
           pointRadius: 0,
-          pointHoverRadius: 6,
-          pointHoverBackgroundColor: "#c89bea",
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: "#4f3d86",
           pointHoverBorderColor: "#fff",
           pointHoverBorderWidth: 2,
           fill: true,
@@ -3095,7 +3091,7 @@ function renderChart(categoryData) {
         },
         x: {
           ticks: {
-            color: "#b3a4c7",
+            color: "#9a948c",
             font: { size: 11, weight: "500", family: "Plus Jakarta Sans" },
           },
           grid: { display: false },
