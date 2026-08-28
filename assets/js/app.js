@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-28-1001";
+const APP_BUILD_VERSION = "2026-08-28-1036";
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
@@ -1549,8 +1549,8 @@ function renderTopAvailability(categoryData) {
             <span class="category-card-bar-fill" style="width:${usedPercent}%"></span>
           </div>
           <div class="category-card-meta">
-            <span>${paceText}</span>
             <span>${Math.round(usedPercent)}% gebruikt</span>
+            <span class="category-pace category-pace-${mood}">${paceText}</span>
           </div>
           ${renderOwnerSplitHtml(split, "category-card-split")}
         </article>
@@ -3055,8 +3055,8 @@ function renderChart(categoryData) {
   const finalData = totals.length > 0 ? totals : [0];
   const ctx = canvas.getContext("2d");
   const gradient = ctx.createLinearGradient(0, 0, 0, 140);
-  gradient.addColorStop(0, "rgba(79, 61, 134, 0.18)");
-  gradient.addColorStop(1, "rgba(79, 61, 134, 0.01)");
+  gradient.addColorStop(0, "rgba(109, 40, 217, 0.28)");
+  gradient.addColorStop(1, "rgba(219, 39, 119, 0.02)");
 
   chartRef.instance = new Chart(canvas, {
     type: "line",
@@ -3066,13 +3066,13 @@ function renderChart(categoryData) {
         {
           label: "Totaal",
           data: finalData,
-          borderColor: "#4f3d86",
+          borderColor: "#6d28d9",
           backgroundColor: gradient,
-          borderWidth: 2,
+          borderWidth: 2.5,
           borderDash: [],
           pointRadius: 0,
           pointHoverRadius: 5,
-          pointHoverBackgroundColor: "#4f3d86",
+          pointHoverBackgroundColor: "#6d28d9",
           pointHoverBorderColor: "#fff",
           pointHoverBorderWidth: 2,
           fill: true,
