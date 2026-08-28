@@ -1304,6 +1304,43 @@ body.is-budget-syncing .balance-card::before {
   gap: 0.55rem;
 }
 
+.tx-more-options {
+  border: 2px solid var(--text);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+  padding: 0.12rem 0.7rem 0.55rem;
+  box-shadow: var(--shadow-button);
+}
+
+.tx-more-options > summary {
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.84rem;
+  color: var(--text);
+  padding: 0.62rem 0.1rem;
+  list-style: none;
+}
+
+.tx-more-options > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tx-more-options > summary::after {
+  content: "▾";
+  float: right;
+  color: var(--text-muted);
+}
+
+.tx-more-options[open] > summary::after {
+  content: "▴";
+}
+
+.tx-more-options-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.1rem 0 0.35rem;
+}
+
 .tx-amount {
   font-weight: 800;
   font-feature-settings: "tnum";

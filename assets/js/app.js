@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-28-1412";
+const APP_BUILD_VERSION = "2026-08-28-1428";
 const CLOUD_HYDRATE_TIMEOUT_MS = 8000;
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
@@ -377,6 +377,11 @@ function applySoloModeDom() {
   const dashTitle = document.querySelector("#parentDashboardSection .card-header h3");
   if (dashTitle) {
     dashTitle.textContent = "Overzicht (deze maand)";
+  }
+
+  const txIntro = document.querySelector("#adminTxSection > p.muted");
+  if (txIntro) {
+    txIntro.textContent = "Categorie + bedrag + opslaan. Datum en bijstorting staan onder Meer opties.";
   }
 
   const budgetHelp = document.querySelector("#adminBudgetSection > p.muted");
@@ -688,6 +693,7 @@ const txDateInput = document.getElementById("txDate");
 const txCategoryInput = document.getElementById("txCategory");
 const txTypeInput = document.getElementById("txType");
 const txModeLabel = document.getElementById("txModeLabel");
+const txMoreOptionsEl = document.getElementById("txMoreOptions");
 const txTopupDetails = document.getElementById("txTopupDetails");
 const txAmountInput = document.getElementById("txAmount");
 const txAmountModeHint = document.getElementById("txAmountModeHint");
@@ -3047,6 +3053,7 @@ function handleParentTransactionAction(event) {
       txFundingModeInput.value = inferTxFundingMode(tx);
     }
     syncTxFundingFieldVisibility();
+    setTxMoreOptionsOpen(true);
     txSubmitBtn.textContent = "Wijziging opslaan";
     cancelTxEditBtn.classList.remove("hidden");
     txAmountInput.focus();
@@ -3125,6 +3132,7 @@ function resetTransactionFormState() {
   }
   syncTxFundingFieldVisibility();
   syncTxAvailabilityHint();
+  setTxMoreOptionsOpen(false);
 }
 
 function syncTxAvailabilityHint() {
@@ -3239,6 +3247,12 @@ function handleTopupQuickAmountClick(event) {
   txAmountInput.focus();
 }
 
+function setTxMoreOptionsOpen(isOpen) {
+  if (txMoreOptionsEl) {
+    txMoreOptionsEl.open = Boolean(isOpen);
+  }
+}
+
 function setTransactionMode(mode) {
   const isTopup = mode === "topup";
   txTopupArmed = isTopup;
@@ -3250,6 +3264,7 @@ function setTransactionMode(mode) {
     txTopupDetails.open = false;
   }
   if (isTopup) {
+    setTxMoreOptionsOpen(true);
     txTopupDetails.open = true;
   }
   syncTxFundingFieldVisibility();

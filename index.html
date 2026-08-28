@@ -11,7 +11,7 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./assets/css/styles.css?v=2026-08-28-1412" />
+    <link rel="stylesheet" href="./assets/css/styles.css?v=2026-08-28-1428" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
@@ -198,13 +198,17 @@
 
         <div class="grid">
           <article id="adminTxSection" class="card wide priority-card">
-            <h3>Transactie toevoegen</h3>
-            <p class="muted">Standaard is dit een uitgave. Bijstorting staat apart als uitzondering.</p>
-            <form id="transactionForm" class="form-grid">
-              <label>
-                <span>Datum</span>
-                <input type="date" id="txDate" required />
-              </label>
+            <h3>Snelboeking</h3>
+            <p class="muted">Categorie + bedrag + opslaan. Datum, betaling en bijstorting staan onder Meer opties.</p>
+            <form id="transactionForm" class="form-grid tx-quick-form">
+              <select id="txType" class="hidden" aria-hidden="true" tabindex="-1">
+                <option value="expense">Uitgave (-)</option>
+                <option value="topup">Bijstorting (+)</option>
+              </select>
+              <div class="tx-presets wide" aria-label="Snelle categorie presets">
+                <button type="button" class="tx-preset-btn" data-preset="kleding-expense">👗 Kleding</button>
+                <button type="button" class="tx-preset-btn" data-preset="zakgeld-expense">💜 Zakgeld</button>
+              </div>
               <label>
                 <span>Categorie</span>
                 <select id="txCategory">
@@ -212,27 +216,8 @@
                   <option value="kleding">Kledingsbudget</option>
                 </select>
               </label>
-              <select id="txType" class="hidden" aria-hidden="true" tabindex="-1">
-                <option value="expense">Uitgave (-)</option>
-                <option value="topup">Bijstorting (+)</option>
-              </select>
-              <p id="txModeLabel" class="tx-mode-label wide">Standaard: uitgave</p>
-              <div class="tx-presets wide" aria-label="Snelle categorie presets">
-                <button type="button" class="tx-preset-btn" data-preset="kleding-expense">👗 Kleding uitgave</button>
-                <button type="button" class="tx-preset-btn" data-preset="zakgeld-expense">💜 Zakgeld uitgave</button>
-              </div>
-              <label id="txFundingLabel" class="wide">
-                <span>Betaald van</span>
-                <select id="txFundingMode">
-                  <option value="auto">Automatisch (eerst mijn budget)</option>
-                  <option value="other-same">Volledig budget van andere ouder</option>
-                  <option value="manual">Zelf kiezen (alle bronnen)</option>
-                </select>
-                <small id="txFundingHint" class="tx-funding-hint muted"></small>
-              </label>
-              <p id="txAvailabilityHint" class="tx-availability-hint muted wide" aria-live="polite"></p>
               <label>
-                <span>Bedrag (€) (zonder -)</span>
+                <span>Bedrag (€)</span>
                 <input type="text" inputmode="decimal" id="txAmount" placeholder="bv. 25,00" required autocomplete="off" />
                 <small id="txAmountModeHint" class="tx-amount-mode-hint hidden">Actieve modus: bijstorting (+) — dit bedrag wordt toegevoegd.</small>
               </label>
@@ -241,16 +226,7 @@
                 <button type="button" class="tx-quick-btn" data-quick-amount="-20">-€20</button>
                 <button type="button" class="tx-quick-btn" data-quick-amount="-50">-€50</button>
               </div>
-              <details id="txTopupDetails" class="tx-topup-details wide">
-                <summary>Bijstorting toevoegen (uitzondering)</summary>
-                <p class="tx-topup-help">Kies snel bedrag of vul zelf een bedrag in.</p>
-                <div class="tx-topup-actions">
-                  <button type="button" class="tx-topup-btn" data-topup-amount="10">+€10</button>
-                  <button type="button" class="tx-topup-btn" data-topup-amount="20">+€20</button>
-                  <button type="button" class="tx-topup-btn" data-topup-amount="50">+€50</button>
-                  <button type="button" class="tx-topup-btn manual" data-topup-manual="true">Handmatig bedrag</button>
-                </div>
-              </details>
+              <p id="txAvailabilityHint" class="tx-availability-hint muted wide" aria-live="polite"></p>
               <label class="wide">
                 <span>Notitie</span>
                 <input id="txNote" type="text" placeholder="Bv. sneakers" />
@@ -259,6 +235,35 @@
                 <button id="txSubmitBtn" class="btn btn-primary" type="submit">Transactie opslaan</button>
                 <button id="cancelTxEditBtn" class="btn btn-ghost hidden" type="button">Annuleer wijziging</button>
               </div>
+              <details id="txMoreOptions" class="tx-more-options wide">
+                <summary>Meer opties</summary>
+                <div class="tx-more-options-body">
+                  <label>
+                    <span>Datum</span>
+                    <input type="date" id="txDate" required />
+                  </label>
+                  <p id="txModeLabel" class="tx-mode-label">Standaard: uitgave</p>
+                  <label id="txFundingLabel" class="wide">
+                    <span>Betaald van</span>
+                    <select id="txFundingMode">
+                      <option value="auto">Automatisch (eerst mijn budget)</option>
+                      <option value="other-same">Volledig budget van andere ouder</option>
+                      <option value="manual">Zelf kiezen (alle bronnen)</option>
+                    </select>
+                    <small id="txFundingHint" class="tx-funding-hint muted"></small>
+                  </label>
+                  <details id="txTopupDetails" class="tx-topup-details wide">
+                    <summary>Bijstorting toevoegen (uitzondering)</summary>
+                    <p class="tx-topup-help">Kies snel bedrag of vul zelf een bedrag in.</p>
+                    <div class="tx-topup-actions">
+                      <button type="button" class="tx-topup-btn" data-topup-amount="10">+€10</button>
+                      <button type="button" class="tx-topup-btn" data-topup-amount="20">+€20</button>
+                      <button type="button" class="tx-topup-btn" data-topup-amount="50">+€50</button>
+                      <button type="button" class="tx-topup-btn manual" data-topup-manual="true">Handmatig bedrag</button>
+                    </div>
+                  </details>
+                </div>
+              </details>
             </form>
           </article>
 
@@ -428,8 +433,8 @@
       </div>
     </section>
 
-    <script src="./assets/js/supabase-config.js?v=2026-08-28-1412"></script>
-    <script src="./assets/js/cloud-snapshot-api.js?v=2026-08-28-1412"></script>
-    <script src="./assets/js/app.js?v=2026-08-28-1412"></script>
+    <script src="./assets/js/supabase-config.js?v=2026-08-28-1428"></script>
+    <script src="./assets/js/cloud-snapshot-api.js?v=2026-08-28-1428"></script>
+    <script src="./assets/js/app.js?v=2026-08-28-1428"></script>
   </body>
 </html>
