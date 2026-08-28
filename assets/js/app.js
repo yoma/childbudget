@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-28-1212";
+const APP_BUILD_VERSION = "2026-08-28-1216";
 const CLOUD_HYDRATE_TIMEOUT_MS = 8000;
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
@@ -563,6 +563,8 @@ const heroGreetingEl = document.getElementById("heroGreeting");
 const parentMessageLabelEl = document.getElementById("parentMessageLabel");
 const childViewEl = document.getElementById("childView");
 const cloudLinkDotEl = document.getElementById("cloudLinkDot");
+const cloudLinkLabelEl = document.getElementById("cloudLinkLabel");
+const cloudLinkStatusEl = document.getElementById("cloudLinkStatus");
 const parentModeBtn = document.getElementById("parentModeBtn");
 const parentDialog = document.getElementById("parentDialog");
 const pinForm = document.getElementById("pinForm");
@@ -1260,7 +1262,7 @@ function getCloudLinkIndicator() {
     document.body.classList.contains("is-budget-loading") ||
     document.body.classList.contains("is-budget-syncing");
   if (stillLoading) {
-    return { state: "syncing", label: "Even syncen" };
+    return { state: "syncing", label: "Syncen..." };
   }
   const linked =
     cloudSyncState.configured &&
@@ -1268,9 +1270,9 @@ function getCloudLinkIndicator() {
     cloudSyncState.syncEligible &&
     !cloudSyncState.lastSyncError;
   if (linked) {
-    return { state: "online", label: "Koppeling actief" };
+    return { state: "online", label: "Gekoppeld" };
   }
-  return { state: "offline", label: "Niet gekoppeld" };
+  return { state: "offline", label: "Offline" };
 }
 
 function renderCloudLinkDot() {
@@ -1280,8 +1282,18 @@ function renderCloudLinkDot() {
   const indicator = getCloudLinkIndicator();
   cloudLinkDotEl.classList.remove("is-online", "is-syncing", "is-offline");
   cloudLinkDotEl.classList.add(`is-${indicator.state}`);
-  cloudLinkDotEl.title = indicator.label;
-  cloudLinkDotEl.setAttribute("aria-label", indicator.label);
+  if (cloudLinkStatusEl) {
+    cloudLinkStatusEl.classList.remove("is-online", "is-syncing", "is-offline");
+    cloudLinkStatusEl.classList.add(`is-${indicator.state}`);
+    cloudLinkStatusEl.title = indicator.label;
+    cloudLinkStatusEl.setAttribute("aria-label", indicator.label);
+  } else {
+    cloudLinkDotEl.title = indicator.label;
+    cloudLinkDotEl.setAttribute("aria-label", indicator.label);
+  }
+  if (cloudLinkLabelEl) {
+    cloudLinkLabelEl.textContent = indicator.label;
+  }
 }
 
 function applyResponsiveButtonLabels() {

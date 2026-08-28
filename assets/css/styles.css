@@ -95,6 +95,10 @@ body {
   font-weight: 800;
 }
 
+.hero-text {
+  min-width: 0;
+}
+
 .hero-text h1 {
   font-size: clamp(1.45rem, 4.5vw, 1.7rem);
   font-weight: 700;
@@ -109,8 +113,16 @@ body {
 .hero-actions {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.45rem;
   flex-shrink: 0;
+}
+
+.cloud-link-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 6.4rem;
 }
 
 .cloud-link-dot {
@@ -120,6 +132,29 @@ body {
   background: #c4b5c8;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
   flex-shrink: 0;
+}
+
+.cloud-link-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-soft);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cloud-link-status.is-online .cloud-link-label {
+  color: #3f7a56;
+}
+
+.cloud-link-status.is-syncing .cloud-link-label {
+  color: #9a6b24;
+}
+
+.cloud-link-status.is-offline .cloud-link-label {
+  color: var(--text-soft);
 }
 
 .cloud-link-dot.is-online {
