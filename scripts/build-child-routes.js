@@ -7,9 +7,9 @@ const root = path.join(__dirname, "..");
 let html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 html = html.replaceAll("./assets/", "../assets/");
 html = html.replaceAll("./admin/", "../admin/");
-html = html.replace(/\?v=2026-\d{2}-\d{2}-\d{4}/g, "?v=2026-08-28-1428");
+html = html.replace(/\?v=2026-\d{2}-\d{2}-\d{4}/g, "?v=2026-08-28-1515");
 
-const marker = '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>';
+const marker = '<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>';
 
 for (const slug of ["lena", "ella"]) {
   const outDir = path.join(root, slug);

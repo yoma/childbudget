@@ -11,9 +11,8 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="../assets/css/styles.css?v=2026-08-28-1428" />
+    <link rel="stylesheet" href="../assets/css/styles.css?v=2026-08-28-1515" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>window.__ROUTE_SLUG__ = "ella";</script>
   </head>
   <body class="is-budget-loading">
@@ -176,7 +175,7 @@
             <h2>Ouder-beheer</h2>
             <p id="loggedInAs" class="muted"></p>
             <p id="cloudSyncStatus" class="muted"></p>
-            <p id="appBuildMeta" class="build-pill app-build-pill">Build 2026-08-28-1148 · wacht op initialisatie...</p>
+            <p id="appBuildMeta" class="build-pill app-build-pill">Build 2026-08-28-1515 · wacht op initialisatie...</p>
           </div>
           <div class="panel-actions">
             <button id="resetAllDataBtn" class="btn btn-ghost hidden" type="button" data-label-desktop="Alles wissen (test)" data-label-mobile="Wis testdata">Alles wissen (test)</button>
@@ -189,9 +188,9 @@
 
         <nav id="adminQuickNav" class="admin-quick-nav" aria-label="Snelmenu ouderbeheer">
           <button type="button" class="admin-nav-btn" data-target="adminTxSection" data-label-desktop="Transactie" data-label-mobile="Transactie">Transactie</button>
-          <button type="button" class="admin-nav-btn" data-target="parentDashboardSection" data-label-desktop="Dashboard" data-label-mobile="Dash">Dashboard</button>
+          <button type="button" class="admin-nav-btn" data-target="parentDashboardSection" data-family-only data-label-desktop="Overzicht" data-label-mobile="Overz">Overzicht</button>
           <button type="button" class="admin-nav-btn" data-target="adminBudgetSection" data-label-desktop="Maandbudget" data-label-mobile="Budget">Maandbudget</button>
-          <button type="button" class="admin-nav-btn" data-target="adminCategorySection" data-label-desktop="Categorieen" data-label-mobile="Cat">Categorieen</button>
+          <button type="button" class="admin-nav-btn" data-target="adminCategorySection" data-label-desktop="Categorieën" data-label-mobile="Cat">Categorieën</button>
           <button type="button" class="admin-nav-btn" data-target="adminPinSection">PIN</button>
           <button type="button" class="admin-nav-btn" data-target="adminCoachSection" data-label-desktop="Coach" data-label-mobile="Coach">Coach</button>
           <button type="button" class="admin-nav-btn" data-target="adminTransactionsSection" data-label-desktop="Transactielijst" data-label-mobile="Transacties">Transactielijst</button>
@@ -220,7 +219,7 @@
               <label>
                 <span>Bedrag (€)</span>
                 <input type="text" inputmode="decimal" id="txAmount" placeholder="bv. 25,00" required autocomplete="off" />
-                <small id="txAmountModeHint" class="tx-amount-mode-hint hidden">Actieve modus: bijstorting (+) — dit bedrag wordt toegevoegd.</small>
+                <small id="txAmountModeHint" class="tx-amount-mode-hint hidden">Actieve modus: bijstorting (+). Dit bedrag wordt toegevoegd.</small>
               </label>
               <div class="tx-quick-amounts wide" aria-label="Snelle bedragen">
                 <button type="button" class="tx-quick-btn" data-quick-amount="-10">-€10</button>
@@ -244,7 +243,7 @@
                     <input type="date" id="txDate" required />
                   </label>
                   <p id="txModeLabel" class="tx-mode-label">Standaard: uitgave</p>
-                  <label id="txFundingLabel" class="wide">
+                  <label id="txFundingLabel" class="wide" data-family-only>
                     <span>Betaald van</span>
                     <select id="txFundingMode">
                       <option value="auto">Automatisch (eerst mijn budget)</option>
@@ -268,7 +267,7 @@
             </form>
           </article>
 
-          <section id="parentDashboardSection" class="card parent-mini-dashboard-card wide">
+          <section id="parentDashboardSection" class="card parent-mini-dashboard-card wide" data-family-only>
             <div class="card-header compact">
               <h3>Overzicht mama & papa (deze maand)</h3>
             </div>
@@ -324,13 +323,9 @@
           </article>
 
           <article id="adminCategorySection" class="card">
-            <h3>Categorieen beheren</h3>
-            <p class="muted">Categorieën (naam, emoji, kleur) zijn gedeeld: wie een categorie toevoegt, ziet iedereen die meteen. Maandbudgetten blijven per ouder apart.</p>
-            <p class="muted">Let op: uitschakelen geldt direct voor alle gebruikers van dit kind.</p>
-            <p class="muted">Wissen verwijdert alle transacties en budgetregels voor die categorie.</p>
-            <p class="muted">
-              Tip: categorieën worden per browser en per toestel bewaard. Op je telefoon nog eens uitschakelen als je daar ook geen zakgeld wil zien (tot cloud-sync actief is).
-            </p>
+            <h3>Categorieën beheren</h3>
+            <p class="muted" id="categorySectionHelp">Categorieën (naam, emoji, kleur) zijn gedeeld. Maandbudgetten blijven per ouder apart. Wissen haalt transacties en budgetregels van die categorie weg.</p>
+            <p class="muted" data-family-only>Uitschakelen geldt meteen voor alle gebruikers van dit kind.</p>
             <form id="categoryConfigForm" class="form-grid">
               <label>
                 <span>Naam categorie</span>
@@ -341,7 +336,7 @@
                 <input id="newCategoryEmojiInput" type="text" placeholder="🎒" maxlength="2" />
               </label>
               <label>
-                <span>Kleur (grafieken &amp; ringen)</span>
+                <span>Kleur</span>
                 <input id="newCategoryColorInput" type="color" value="#4a9ca8" title="Basiskleur voor deze categorie" />
               </label>
               <p id="categoryConfigStatus" class="muted wide"></p>
@@ -411,7 +406,7 @@
         <details id="adminTransactionsSection" class="card parent-transactions-accordion">
           <summary>Alle transacties bekijken (mama + papa)</summary>
           <div class="parent-transaction-filters">
-            <label>
+            <label data-family-only>
               <span>Ouder</span>
               <select id="parentTxFilterParent">
                 <option value="all">Allebei</option>
@@ -434,8 +429,8 @@
       </div>
     </section>
 
-    <script src="../assets/js/supabase-config.js?v=2026-08-28-1428"></script>
-    <script src="../assets/js/cloud-snapshot-api.js?v=2026-08-28-1428"></script>
-    <script src="../assets/js/app.js?v=2026-08-28-1428"></script>
+    <script src="../assets/js/supabase-config.js?v=2026-08-28-1515"></script>
+    <script src="../assets/js/cloud-snapshot-api.js?v=2026-08-28-1515"></script>
+    <script src="../assets/js/app.js?v=2026-08-28-1515"></script>
   </body>
 </html>

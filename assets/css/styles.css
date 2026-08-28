@@ -517,76 +517,6 @@ body.is-budget-syncing .balance-card::before {
   border-radius: 12px;
 }
 
-.overview-matrix {
-  display: grid;
-  grid-template-columns: 0.9fr 1fr 1fr;
-  gap: 0.34rem;
-}
-
-.overview-matrix-head,
-.overview-matrix-label,
-.overview-matrix-value {
-  border-radius: 10px;
-  padding: 0.34rem 0.42rem;
-  background: #f7f1fb;
-}
-
-.overview-matrix-head {
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-align: center;
-  color: #4f3b68;
-}
-
-.overview-matrix-head.empty {
-  background: transparent;
-}
-
-.overview-matrix-head.kleding {
-  color: var(--accent-kleding);
-}
-
-.overview-matrix-head.zakgeld {
-  color: var(--accent-zakgeld);
-}
-
-.overview-matrix-label {
-  font-size: 0.68rem;
-  color: #7d6a97;
-  font-weight: 500;
-}
-
-.overview-matrix-label.total {
-  background: linear-gradient(135deg, #e8d7fb, #f4ddf5);
-  color: #4b2e6b;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.overview-matrix-value {
-  text-align: right;
-  font-size: 0.84rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: #42275f;
-}
-
-.overview-matrix-value.kleding {
-  color: var(--accent-kleding);
-}
-
-.overview-matrix-value.zakgeld {
-  color: var(--accent-zakgeld);
-}
-
-.overview-matrix-value.total {
-  background: linear-gradient(135deg, #e6cffb, #f3d6ef);
-  border: 1px solid rgba(169, 118, 222, 0.35);
-  font-size: 1.02rem;
-  font-weight: 900;
-  box-shadow: 0 6px 14px rgba(166, 110, 220, 0.18);
-}
-
 .overview-split-mini {
   margin-top: 0.18rem;
   display: flex;
@@ -622,30 +552,6 @@ body.is-budget-syncing .balance-card::before {
   .category-cards {
     grid-template-columns: 1fr;
     gap: 1rem;
-  }
-
-  .overview-matrix {
-    grid-template-columns: 0.9fr 1fr 1fr;
-    gap: 0.38rem;
-  }
-
-  .overview-matrix-head,
-  .overview-matrix-label,
-  .overview-matrix-value {
-    padding: 0.3rem 0.36rem;
-    border-radius: 8px;
-  }
-
-  .overview-matrix-value {
-    font-size: 0.78rem;
-  }
-
-  .overview-matrix-label.total {
-    font-size: 0.74rem;
-  }
-
-  .overview-matrix-value.total {
-    font-size: 0.94rem;
   }
 
   .overview-split-mini {
@@ -1091,14 +997,8 @@ body.is-budget-syncing .balance-card::before {
   align-items: center;
   justify-content: center;
   font-size: 1.15rem;
-}
-
-.tx-icon-zakgeld {
-  background: var(--accent-zakgeld-soft);
-}
-
-.tx-icon-kleding {
-  background: var(--accent-kleding-soft);
+  --cat-accent: var(--accent);
+  background: color-mix(in srgb, var(--cat-accent) 22%, #fff);
 }
 
 .tx-body {
@@ -2318,7 +2218,11 @@ canvas {
   background: transparent;
 }
 
+body.app-mode-solo [data-family-only],
 body.app-mode-solo #parentDashboardSection,
+body.app-mode-solo .admin-nav-btn[data-target="parentDashboardSection"],
+body.app-mode-solo #txFundingLabel,
+body.app-mode-solo #parentTxFilterParent,
 body.app-mode-solo .overview-split-mini,
 body.app-mode-solo .top-availability-split {
   display: none !important;

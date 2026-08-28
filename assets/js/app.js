@@ -110,12 +110,12 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-28-1428";
+const APP_BUILD_VERSION = "2026-08-28-1515";
 const CLOUD_HYDRATE_TIMEOUT_MS = 8000;
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
 const childIdFromUrl = (urlParams.get("child") || pathRoute?.childId || "").trim();
-// Solo gebruikt nooit de family-default (Lena) uit config — alleen route, ?child= of soloChildId.
+// Solo gebruikt nooit de family-default (Lena) uit config, alleen route, ?child= of soloChildId.
 const ACTIVE_CHILD_ID =
   childIdFromUrl ||
   (IS_SOLO_MODE ? String(appConfig.soloChildId ?? "").trim() : CONFIGURED_LENA_CHILD_ID) ||
@@ -127,8 +127,7 @@ const ACTIVE_FAMILY_ID = (
   "default-family"
 ).trim();
 const CHILD_NAME = (urlParams.get("childName") || pathRoute?.childName || appConfig.childName || "Lena").trim();
-const defaultAppName = `${CHILD_NAME.toLowerCase().replace(/\s+/g, "-")}_budget`;
-const APP_NAME = (urlParams.get("appName") || appConfig.appName || defaultAppName).trim();
+const APP_NAME = (urlParams.get("appName") || `${CHILD_NAME} Money`).trim();
 const STORAGE_KEY = `child-budget-v1:${ACTIVE_FAMILY_ID}:${ACTIVE_CHILD_ID}:${APP_MODE}`;
 const LEGACY_STORAGE_KEY = `child-budget-v1:${ACTIVE_FAMILY_ID}:${ACTIVE_CHILD_ID}`;
 const CLOUD_SYNC_BLOCKED = detectCloudSyncCrossAppRisk();
@@ -182,7 +181,7 @@ function payloadCompatibleWithCurrentApp(payload) {
     ok: false,
     reason:
       inferred === "family"
-        ? "Cloud-data is voor mama/papa (family), niet voor solo — andere child-link gebruiken."
+        ? "Cloud-data is voor mama/papa, niet voor solo. Gebruik een andere kind-link."
         : "Cloud-data is voor solo, niet voor deze family-link.",
   };
 }
@@ -366,7 +365,7 @@ function applySoloModeDom() {
 
   const panelTitle = parentPanel?.querySelector(".panel-header h2");
   if (panelTitle) {
-    panelTitle.textContent = `${CHILD_NAME} — beheer`;
+    panelTitle.textContent = `${CHILD_NAME} - beheer`;
   }
 
   const overviewTag = document.getElementById("monthOverviewTag");
@@ -389,10 +388,10 @@ function applySoloModeDom() {
     budgetHelp.textContent = "Wordt opgeslagen op jouw persoonlijke budget.";
   }
 
-  const catHelp = document.querySelector("#adminCategorySection > p.muted");
+  const catHelp = document.getElementById("categorySectionHelp");
   if (catHelp) {
     catHelp.textContent =
-      "Categorieën gelden voor jouw hele app. Voeg toe, pas kleur aan of schakel uit.";
+      "Categorieën gelden voor jouw hele app. Voeg toe, pas kleur aan of schakel uit. Wissen haalt transacties en budgetregels van die categorie weg.";
   }
 
   if (parentMessageLabelEl) {
@@ -636,8 +635,6 @@ const cloudLoadHintEl = document.getElementById("cloudLoadHint");
 const balanceCardEl = document.getElementById("balanceCard");
 const topAvailabilityBreakdownEl = document.getElementById("topAvailabilityBreakdown");
 const coachAlertsEl = document.getElementById("coachAlerts");
-const speedRingsEl = document.getElementById("speedRings");
-const speedLegendEl = document.getElementById("speedLegend");
 const clearOverviewEl = document.getElementById("clearOverview");
 const rolloverBreakdownEl = document.getElementById("rolloverBreakdown");
 const appTitleEl = document.getElementById("appTitle");
@@ -746,7 +743,7 @@ const budgetSourceChoiceState = {
 };
 let txTopupArmed = false;
 const cloudSyncState = {
-  configured: false,
+  configured: Boolean(window.cloudSnapshotApi?.isConfigured?.()),
   connected: false,
   lastError: "",
   syncEligible: false,
@@ -754,7 +751,6 @@ const cloudSyncState = {
   lastSyncedAt: null,
 };
 let cloudPushTimer = null;
-const supabaseClient = createSupabaseClient();
 
 function expectCloudHydrate() {
   return (
@@ -1415,18 +1411,6 @@ function applyBranding() {
   }
 }
 
-function createSupabaseClient() {
-  const config = window.__SUPABASE_CONFIG__;
-  const createClientFn = window.supabase?.createClient;
-  if (!config?.url || !config?.anonKey || typeof createClientFn !== "function") {
-    return null;
-  }
-  cloudSyncState.configured = true;
-  return createClientFn(config.url, config.anonKey, {
-    auth: { persistSession: true, autoRefreshToken: true },
-  });
-}
-
 function getCloudSnapshotApi() {
   return window.cloudSnapshotApi;
 }
@@ -1456,14 +1440,14 @@ function renderCloudSyncStatus() {
     return;
   }
   if (!cloudSyncState.configured) {
-    cloudSyncStatusEl.textContent = "Cloud sync: nog niet ingesteld";
+    cloudSyncStatusEl.textContent = "Cloud-sync: nog niet ingesteld";
     cloudSyncStatusEl.classList.remove("positive");
     cloudSyncStatusEl.classList.add("error");
     renderBuildMeta();
     return;
   }
   if (!cloudSyncState.connected) {
-    cloudSyncStatusEl.textContent = `Cloud sync: niet verbonden (${cloudSyncState.lastError})`;
+    cloudSyncStatusEl.textContent = `Cloud-sync: niet verbonden (${cloudSyncState.lastError})`;
     cloudSyncStatusEl.classList.remove("positive");
     cloudSyncStatusEl.classList.add("error");
     renderBuildMeta();
@@ -1472,16 +1456,16 @@ function renderCloudSyncStatus() {
   if (!cloudSyncState.syncEligible) {
     if (CLOUD_SYNC_BLOCKED) {
       cloudSyncStatusEl.textContent =
-        "Cloud sync geblokkeerd: solo mag niet dezelfde kind-ID als Lena — gebruik een aparte child-UUID in de link.";
+        "Cloud-sync geblokkeerd: solo mag niet dezelfde kind-ID als Lena. Gebruik een aparte kind-link.";
       cloudSyncStatusEl.classList.remove("positive");
       cloudSyncStatusEl.classList.add("error");
     } else if (cloudSyncState.lastSyncError) {
-      cloudSyncStatusEl.textContent = `Cloud sync: ${cloudSyncState.lastSyncError}`;
+      cloudSyncStatusEl.textContent = `Cloud-sync: ${cloudSyncState.lastSyncError}`;
       cloudSyncStatusEl.classList.remove("positive");
       cloudSyncStatusEl.classList.add("error");
     } else {
       cloudSyncStatusEl.textContent =
-        "Cloud sync: verbonden — gebruik family + kind UUID in de link of config om tussen toestellen te synchroniseren.";
+        "Cloud-sync: verbonden. Zet family- en kind-ID in de link of config om tussen toestellen te synchroniseren.";
       cloudSyncStatusEl.classList.remove("error");
       cloudSyncStatusEl.classList.add("positive");
     }
@@ -1489,7 +1473,7 @@ function renderCloudSyncStatus() {
     return;
   }
   if (cloudSyncState.lastSyncError) {
-    cloudSyncStatusEl.textContent = `Cloud sync: fout bij opslaan/ laden (${cloudSyncState.lastSyncError}).`;
+    cloudSyncStatusEl.textContent = `Cloud-sync: fout bij opslaan/ laden (${cloudSyncState.lastSyncError}).`;
     cloudSyncStatusEl.classList.remove("positive");
     cloudSyncStatusEl.classList.add("error");
     renderBuildMeta();
@@ -1497,13 +1481,13 @@ function renderCloudSyncStatus() {
   }
   if (cloudSyncState.lastSyncedAt) {
     const when = new Date(cloudSyncState.lastSyncedAt).toLocaleString("nl-BE");
-    cloudSyncStatusEl.textContent = `Cloud sync: actief · laatst bijgewerkt ${when}`;
+    cloudSyncStatusEl.textContent = `Cloud-sync: actief · laatst bijgewerkt ${when}`;
     cloudSyncStatusEl.classList.remove("error");
     cloudSyncStatusEl.classList.add("positive");
     renderBuildMeta();
     return;
   }
-  cloudSyncStatusEl.textContent = "Cloud sync: actief · budget wordt online bijgehouden voor dit kind.";
+  cloudSyncStatusEl.textContent = "Cloud-sync: actief · budget wordt online bijgehouden voor dit kind.";
   cloudSyncStatusEl.classList.remove("error");
   cloudSyncStatusEl.classList.add("positive");
   renderBuildMeta();
@@ -1688,15 +1672,16 @@ function renderAutoRenewOverview() {
   const actingParent = getSessionOwner();
   autoRenewOverviewEl.innerHTML = entries
     .map((entry) => {
-      const parentLabel = entry.parent === "mama" ? "Mama" : "Papa";
+      const parentLabel = ownerDisplayLabel(entry.parent);
       const catLabel = `${getCategoryEmoji(entry.category)} ${humanCategory(entry.category)}`;
       const interval = getRecurringIntervalFor(entry.parent, entry.category);
       const intervalHint =
         interval <= 1 ? "elke maand" : `om de ${interval} maanden (vanaf startmaand)`;
       const canManage = actingParent === entry.parent;
-      const manageHint = canManage
-        ? ""
-        : `<span class="muted"> · log in als ${parentLabel.toLowerCase()} om te wijzigen</span>`;
+      const manageHint =
+        canManage || IS_SOLO_MODE
+          ? ""
+          : `<span class="muted"> · log in als ${parentLabel.toLowerCase()} om te wijzigen</span>`;
       const actionButtons = canManage
         ? `
             <button
@@ -1718,7 +1703,7 @@ function renderAutoRenewOverview() {
         : "";
       return `
         <div class="auto-renew-row">
-          <span>${parentLabel} · ${catLabel} <span class="muted">· ${intervalHint}</span>${manageHint}</span>
+          <span>${IS_SOLO_MODE ? catLabel : `${parentLabel} · ${catLabel}`} <span class="muted">· ${intervalHint}</span>${manageHint}</span>
           <strong>${currency.format(entry.amount)}</strong>
           <div class="auto-renew-actions">${actionButtons}</div>
         </div>
@@ -1819,66 +1804,6 @@ function renderTopAvailability(categoryData) {
       `;
     })
     .join("");
-}
-
-function renderSpeedRingSvg(usedPercent, accentColor) {
-  const pct = Math.min(Math.max(usedPercent, 0), 100);
-  return `
-    <svg class="speed-ring-svg" viewBox="0 0 44 44" aria-hidden="true">
-      <circle class="speed-ring-track" cx="22" cy="22" r="18" fill="none" stroke-width="4" />
-      <circle
-        class="speed-ring-progress"
-        cx="22"
-        cy="22"
-        r="18"
-        fill="none"
-        stroke="${accentColor}"
-        stroke-width="4"
-        pathLength="100"
-        stroke-dasharray="${pct} 100"
-        stroke-linecap="round"
-        transform="rotate(-90 22 22)"
-      />
-    </svg>
-  `;
-}
-
-function renderSpeedRings() {
-  if (!speedRingsEl) {
-    return;
-  }
-  const elapsedRatio = todayDate.getDate() / new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
-  const categories = getEnabledCategoryIds();
-
-  speedRingsEl.innerHTML = categories
-    .map((category) => {
-      const usage = getCurrentMonthUsage(category);
-      const speedRatio = elapsedRatio > 0 ? usage.usedRatio / elapsedRatio : 0;
-      const usedPercent = Math.min(Math.max(usage.usedRatio * 100, 0), 100);
-      const mood = getSpeedMood(speedRatio);
-      const paceText = mood === "slow" ? "rustig" : mood === "fast" ? "snel" : "on track";
-
-      const accentColor = getCategoryColor(category);
-      const safeCategoryClass = `cat-${String(category).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-      return `
-          <div class="speed-ring-card ${safeCategoryClass}" style="--ring-accent:${accentColor};">
-          <div class="speed-ring">${renderSpeedRingSvg(usedPercent, accentColor)}</div>
-          <div class="speed-ring-value">${Math.round(usage.usedRatio * 100)}%</div>
-          <div class="speed-ring-label">${humanCategory(category)}</div>
-          <div class="speed-ring-meta">Tempo: ${paceText}</div>
-        </div>
-      `;
-    })
-    .join("");
-
-  if (speedLegendEl) {
-    speedLegendEl.innerHTML = categories
-      .map(
-        (category) =>
-          `<span><i class="dot" style="background:${getCategoryColor(category)};"></i>${humanCategory(category)}</span>`
-      )
-      .join("");
-  }
 }
 
 function getSpeedMood(speedRatio) {
@@ -2279,7 +2204,7 @@ function pruneExpiredParentMessages() {
 
 function formatMessageReadStatus(entry) {
   if (!entry?.text) {
-    return "—";
+    return "geen";
   }
   if (!entry.readAt) {
     return "nog niet gelezen";
@@ -3002,7 +2927,7 @@ function buildTransactionRowsMarkup(items, includeParentName, includeActions = f
         .join("");
       return `
         <div class="tx-item">
-          <div class="tx-icon tx-icon-${tx.category}">${emoji}</div>
+          <div class="tx-icon" style="--cat-accent:${getCategoryColor(tx.category)}">${emoji}</div>
           <div class="tx-body">
             <strong>${humanCategory(tx.category)}${includeParentName && parentName ? ` · ${parentName}` : ""}</strong>
             <p class="tx-meta">${dateLabel}${tx.note ? ` · ${escapeHtml(tx.note)}` : ""}</p>
@@ -3765,7 +3690,7 @@ function renderCategoryConfigList() {
             class="category-color-input"
             data-category-color-id="${category.id}"
             value="${swatchHex}"
-            title="Kleur op Lena-scherm"
+            title="Kleur van deze categorie"
             aria-label="Kleur voor ${escapeHtml(category.label)}"
           />
           <span class="category-config-title">${category.emoji || "💠"} ${escapeHtml(category.label)} · ${activeLabel}</span>
@@ -4225,7 +4150,7 @@ async function hydrateFromCloudSnapshot() {
   cloudSyncState.syncEligible =
     looksLikeUuid(ACTIVE_CHILD_ID) && looksLikeUuid(ACTIVE_FAMILY_ID) && !CLOUD_SYNC_BLOCKED;
   cloudSyncState.lastSyncError = CLOUD_SYNC_BLOCKED
-    ? "Solo mag niet dezelfde kind-ID als Lena gebruiken — maak een aparte child in Supabase."
+    ? "Solo mag niet dezelfde kind-ID als Lena gebruiken. Maak een aparte kind-link."
     : "";
 
   const snapshotApi = getCloudSnapshotApi();
