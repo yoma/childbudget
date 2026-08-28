@@ -110,7 +110,7 @@ const currency = new Intl.NumberFormat("nl-BE", {
 
 const today = new Date();
 const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-const APP_BUILD_VERSION = "2026-08-28-1515";
+const APP_BUILD_VERSION = "2026-08-28-1552";
 const CLOUD_HYDRATE_TIMEOUT_MS = 8000;
 const APP_MODE = IS_SOLO_MODE ? "solo" : "family";
 const CONFIGURED_LENA_CHILD_ID = String(appConfig.childId ?? "").trim();
@@ -535,21 +535,7 @@ function alignExpenseDateWithAvailableBudget(date, category, requestedAmount, ac
 }
 
 function compareTransactions(a, b) {
-  if (a?.date !== b?.date) {
-    return (a?.date || "") > (b?.date || "") ? 1 : -1;
-  }
-  // Same day: credit transfers first, then debit transfers, then normal txs.
-  const rank = (tx) => {
-    if (tx?.systemTransfer) {
-      return Number(tx.amount) >= 0 ? 0 : 1;
-    }
-    return 2;
-  };
-  const rankDiff = rank(a) - rank(b);
-  if (rankDiff !== 0) {
-    return rankDiff;
-  }
-  return String(a?.id || "").localeCompare(String(b?.id || ""));
+  return BudgetEngine.compareTransactions(a, b);
 }
 
 async function resolveSoloBudgetUsageDecision({
@@ -629,6 +615,16 @@ async function resolveSoloBudgetUsageDecision({
 const state = loadState();
 const chartRef = { instance: null };
 
+function getEngineContext() {
+  return {
+    parents: PARENTS,
+    soloOwner: SOLO_OWNER,
+    isSoloMode: IS_SOLO_MODE,
+    currentMonth,
+    state,
+  };
+}
+
 const totalRemainingEl = document.getElementById("totalRemaining");
 const monthLabelEl = document.getElementById("monthLabel");
 const cloudLoadHintEl = document.getElementById("cloudLoadHint");
@@ -664,7 +660,6 @@ const txAvailabilityHintEl = document.getElementById("txAvailabilityHint");
 const parentPanel = document.getElementById("parentPanel");
 const closeParentPanelBtn = document.getElementById("closeParentPanelBtn");
 const logoutParentBtn = document.getElementById("logoutParentBtn");
-const resetAllDataBtn = document.getElementById("resetAllDataBtn");
 const adminQuickNavEl = document.getElementById("adminQuickNav");
 const loggedInAsEl = document.getElementById("loggedInAs");
 const cloudSyncStatusEl = document.getElementById("cloudSyncStatus");
@@ -728,10 +723,7 @@ const childQuickActionsEl = document.getElementById("childQuickActions");
 const openTransactionsBtn = document.getElementById("openTransactionsBtn");
 const childTransactionsCardEl = document.getElementById("childTransactionsCard");
 const viewMode = urlParams.get("view");
-const mobileParentActionButtons = [
-  resetAllDataBtn,
-  closeParentPanelBtn,
-].filter(Boolean);
+const mobileParentActionButtons = [closeParentPanelBtn].filter(Boolean);
 const session = { loggedInParent: null };
 const txEditState = { editingId: null };
 const budgetEditState = { parent: null, category: null };
@@ -952,25 +944,6 @@ async function init() {
     session.loggedInParent = null;
     renderLoggedInParent();
     setChangePinMessage("", true);
-  });
-  resetAllDataBtn.addEventListener("click", () => {
-    const canReset = IS_SOLO_MODE
-      ? session.loggedInParent === SOLO_OWNER
-      : session.loggedInParent === "papa";
-    if (!canReset) {
-      return;
-    }
-    const firstConfirm = window.confirm(
-      "Alles wissen? Dit verwijdert ALLE budgetten, transacties, coach-instellingen en PIN-wijzigingen op deze browser."
-    );
-    if (!firstConfirm) {
-      return;
-    }
-    const secondConfirm = window.confirm("Laatste check: zeker resetten naar volledig leeg?");
-    if (!secondConfirm) {
-      return;
-    }
-    resetAllData();
   });
 
   coachAlertsEl.addEventListener("click", handleCoachAlertClick);
@@ -1558,16 +1531,13 @@ function syncChildQuickActionsVisibility() {
 function renderLoggedInParent() {
   if (!session.loggedInParent) {
     loggedInAsEl.textContent = "";
-    resetAllDataBtn.classList.add("hidden");
     return;
   }
   if (IS_SOLO_MODE) {
     loggedInAsEl.textContent = `Beheer voor ${CHILD_NAME}`;
-    resetAllDataBtn.classList.remove("hidden");
   } else {
     const name = session.loggedInParent === "mama" ? "Mama" : "Papa";
     loggedInAsEl.textContent = `Aangemeld als: ${name}`;
-    resetAllDataBtn.classList.toggle("hidden", session.loggedInParent !== "papa");
   }
   setChangePinMessage("", true);
   hydrateParentCoachForm();
@@ -1619,19 +1589,11 @@ function render() {
 }
 
 function clampRecurringIntervalMonths(raw) {
-  const n = Math.round(Number(raw));
-  if (!Number.isFinite(n)) {
-    return 1;
-  }
-  return Math.min(12, Math.max(1, n));
+  return BudgetEngine.clampRecurringIntervalMonths(raw);
 }
 
 function monthIndexFromKey(monthKey) {
-  const [y, m] = String(monthKey).split("-").map(Number);
-  if (!Number.isFinite(y) || !Number.isFinite(m)) {
-    return 0;
-  }
-  return y * 12 + m;
+  return BudgetEngine.monthIndexFromKey(monthKey);
 }
 
 function readBudgetRecurringIntervalFromForm() {
@@ -1646,7 +1608,7 @@ function syncBudgetRecurringIntervalVisibility() {
 }
 
 function getRecurringIntervalFor(parent, category) {
-  return clampRecurringIntervalMonths(state.recurringIntervalMonths?.[parent]?.[category]);
+  return BudgetEngine.getRecurringIntervalFor(getEngineContext(), parent, category);
 }
 
 // Parent budget configuration (auto-renew)
@@ -1899,26 +1861,37 @@ function buildAutomaticCoachAlerts() {
   const daysInMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate();
   const categories = getEnabledCategoryIds();
   const alerts = [];
+  const sensitivity = state.coachSettings.sensitivity ?? "normal";
 
   categories.forEach((category) => {
     const usage = getCurrentMonthUsage(category);
-    if (usage.monthBudget <= 0) {
+    const snapshot = getCategorySnapshot(category);
+    const availableNow = snapshot.availableNow;
+    const remainingLevel = getRemainingAlertLevel(availableNow, usage.monthBudget, sensitivity);
+    const paceLevel =
+      usage.monthBudget > 0
+        ? getUsageSeverity(dayOfMonth, daysInMonth, usage.usedRatio, sensitivity)
+        : null;
+
+    if (remainingLevel === "danger") {
+      alerts.push(
+        createCoachMessage(category, "danger", "remaining", usage.usedRatio, availableNow, dayOfMonth)
+      );
       return;
     }
 
-    const ratio = usage.usedRatio;
-    const remaining = usage.monthBudget - usage.usedFromMonthBudget;
-    const severity = getUsageSeverity(
-      dayOfMonth,
-      daysInMonth,
-      ratio,
-      state.coachSettings.sensitivity ?? "normal"
-    );
-    if (!severity) {
+    if (paceLevel) {
+      const paceTone = paceLevel === "danger" ? "warning" : paceLevel;
+      const tone = remainingLevel === "warning" && paceTone === "soft" ? "warning" : paceTone;
+      alerts.push(createCoachMessage(category, tone, "pace", usage.usedRatio, availableNow, dayOfMonth));
       return;
     }
 
-    alerts.push(createCoachMessage(category, severity, ratio, remaining, dayOfMonth));
+    if (remainingLevel === "warning") {
+      alerts.push(
+        createCoachMessage(category, "warning", "remaining", usage.usedRatio, availableNow, dayOfMonth)
+      );
+    }
   });
 
   if (alerts.length === 0) {
@@ -1979,57 +1952,87 @@ function getUsageSeverity(dayOfMonth, daysInMonth, usedRatio, sensitivity) {
   return null;
 }
 
-function createCoachMessage(category, severity, ratio, remaining, dayOfMonth) {
+function getRemainingAlertLevel(availableNow, monthBudget, sensitivity) {
+  const settingsBySensitivity = {
+    calm: { dangerAbs: 2, dangerShare: 0.06, warnAbs: 6, warnShare: 0.14 },
+    normal: { dangerAbs: 5, dangerShare: 0.1, warnAbs: 10, warnShare: 0.2 },
+    strict: { dangerAbs: 8, dangerShare: 0.15, warnAbs: 15, warnShare: 0.28 },
+  };
+  const cfg = settingsBySensitivity[sensitivity] ?? settingsBySensitivity.normal;
+  const pot = Math.max(monthBudget, 0);
+  const share = pot > 0 ? availableNow / pot : availableNow <= 0 ? 0 : 1;
+  if (availableNow <= cfg.dangerAbs || share <= cfg.dangerShare) {
+    return "danger";
+  }
+  if (availableNow <= cfg.warnAbs || share <= cfg.warnShare) {
+    return "warning";
+  }
+  return null;
+}
+
+function createCoachMessage(category, severity, kind, ratio, availableNow, dayOfMonth) {
   const label = humanCategory(category).toLowerCase();
   const ratioText = Math.round(ratio * 100);
-  const remainingText = currency.format(remaining);
-  const templates = {
+  const remainingText = currency.format(availableNow);
+  const paceTemplates = {
     soft: [
       {
         title: `Tip · ${label}`,
-        text: `${ratioText}% is al gebruikt. Er blijft ${remainingText} over, dus je hebt nog speelruimte.`,
+        text: `${ratioText}% van het maandbudget is al gebruikt. Totaal blijft ${remainingText} over.`,
       },
       {
         title: `Check-in · ${label}`,
-        text: `Je zit op ${ratioText}%. Als je nu bewust kiest, blijft ${remainingText} over.`,
+        text: `Je zit op ${ratioText}% deze maand. Er blijft nog ${remainingText} over, ook van vorige maanden.`,
       },
       {
         title: `Tempo · ${label}`,
-        text: `${ratioText}% gebruikt is oké. Hou ${remainingText} als buffer voor later in de maand.`,
+        text: `${ratioText}% deze maand is oké. Je hebt nog ${remainingText} in totaal.`,
       },
     ],
     warning: [
       {
-        title: `Let op · ${label}`,
-        text: `Al ${ratioText}% deze maand. Even vertragen helpt om ${remainingText} over te houden.`,
+        title: `Snel tempo · ${label}`,
+        text: `Al ${ratioText}% van het maandbudget. Even vertragen mag, je hebt nog ${remainingText} over.`,
       },
       {
-        title: `Snel tempo · ${label}`,
-        text: `Je zit op ${ratioText}%. Een paar rustigere dagen houdt ${remainingText} over.`,
+        title: `Let op · ${label}`,
+        text: `Je tempo is hoog deze maand (${ratioText}%). Er blijft nog ${remainingText} over.`,
       },
       {
         title: `Update · ${label}`,
-        text: `${ratioText}% is al weg. Doel voor de rest van de maand: ${remainingText} bewaren.`,
+        text: `${ratioText}% van het maandbudget is al weg. Totaal blijft ${remainingText} over.`,
+      },
+    ],
+  };
+  const remainingTemplates = {
+    warning: [
+      {
+        title: `Saldo lager · ${label}`,
+        text: `Er blijft ${remainingText} over in totaal. Bewust kiezen helpt tot het einde van de maand.`,
+      },
+      {
+        title: `Check-in · ${label}`,
+        text: `Nog ${remainingText} beschikbaar. Een rustiger ritme houdt ruimte over.`,
       },
     ],
     danger: [
       {
         title: `Bijna op · ${label}`,
-        text: `${ratioText}% gebruikt. Tijd om extra voorzichtig te zijn tot het einde van de maand.`,
-      },
-      {
-        title: `Hoog tempo · ${label}`,
-        text: `${ratioText}% verbruikt en we zijn pas dag ${dayOfMonth}. Even pauzeren beschermt wat er nog rest.`,
+        text: `Er blijft ${remainingText} over in totaal. Tijd om extra voorzichtig te zijn tot het einde van de maand.`,
       },
       {
         title: `Budget laag · ${label}`,
-        text: `Je zit op ${ratioText}%. Bescherm het resterende bedrag tot de volgende maand.`,
+        text: `Nog ${remainingText} beschikbaar. Bescherm wat er rest tot de volgende maand.`,
+      },
+      {
+        title: `Bijna op · ${label}`,
+        text: `We zijn dag ${dayOfMonth} en er blijft ${remainingText} over. Even pauzeren helpt.`,
       },
     ],
   };
-
-  const list = templates[severity];
-  const idx = getStableIndex(`${category}-${severity}-${currentMonth}-${new Date().getDate()}`, list.length);
+  const templates = kind === "remaining" ? remainingTemplates : paceTemplates;
+  const list = templates[severity] ?? paceTemplates.soft;
+  const idx = getStableIndex(`${category}-${kind}-${severity}-${currentMonth}-${new Date().getDate()}`, list.length);
   return {
     toneClass: severity === "danger" ? "coach-danger" : severity === "warning" ? "coach-warning" : "coach-soft",
     categoryClass: `coach-cat-${category}`,
@@ -2264,110 +2267,16 @@ function getCategorySnapshot(category, categoryData) {
     rolloverFromPrev = sum(prevSimulation.buckets.map((bucket) => bucket.amount));
   }
 
-  const availableNow = categoryData.find((entry) => entry.category === category)?.totalRemaining ?? 0;
+  const fromData = categoryData?.find((entry) => entry.category === category)?.totalRemaining;
+  const availableNow =
+    typeof fromData === "number"
+      ? fromData
+      : sum(simulateCategory(category, currentMonth).buckets.map((bucket) => bucket.amount));
   return { monthBudget, rolloverFromPrev, availableNow };
 }
 
 function getParentRemainingSplit(category, upToMonth, options = {}) {
-  const excludedTxIds = Array.isArray(options.excludeTxIds)
-    ? new Set(options.excludeTxIds.filter(Boolean))
-    : new Set();
-  const months = getMonthRange(upToMonth);
-  const buckets = [];
-
-  months.forEach((month) => {
-    PARENTS.forEach((owner) => {
-      const ownerBudget = getBudgetAmountForMonth(month, category, owner);
-      if (Math.abs(ownerBudget) > 0.004) {
-        addOwnedBucket(buckets, month, owner, ownerBudget);
-      }
-    });
-
-    const txs = state.transactions
-      .filter((tx) => tx.month === month && tx.category === category && !excludedTxIds.has(tx.id))
-      .sort(compareTransactions);
-
-    txs.forEach((tx) => {
-      const owner = normalizeOwnerKey(tx.createdBy);
-      if (tx.amount >= 0) {
-        addOwnedBucket(buckets, tx.month, owner, tx.amount);
-        pruneZeroBuckets(buckets);
-        return;
-      }
-
-      const usageEntries = Array.isArray(tx.budgetUsage)
-        ? tx.budgetUsage
-        : tx.borrowAmount > 0 &&
-            (tx.borrowFromParent === "mama" ||
-              tx.borrowFromParent === "papa" ||
-              tx.borrowFromParent === SOLO_OWNER)
-          ? [{ fromParent: tx.borrowFromParent, fromCategory: category, amount: tx.borrowAmount }]
-          : [];
-      const fundingMode = normalizeTxFundingMode(tx.fundingMode);
-      let toSpend = Math.abs(tx.amount);
-      const usageSum = usageEntries.reduce((acc, entry) => acc + (Number(entry.amount) || 0), 0);
-      const usagePlanComplete = usageEntries.length > 0 && usageSum >= toSpend - 0.02;
-      const hasCrossCategoryUsage = usageEntries.some((entry) => entry.fromCategory !== category);
-
-      const spendFromParentBuckets = (fromParent, requestedAmount) => {
-        let requested = requestedAmount;
-        const positiveBuckets = buckets
-          .filter((bucket) => bucket.owner === fromParent && bucket.amount > 0)
-          .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
-        positiveBuckets.forEach((bucket) => {
-          if (requested <= 0) {
-            return;
-          }
-          const used = Math.min(bucket.amount, requested);
-          bucket.amount -= used;
-          requested -= used;
-        });
-        return requested;
-      };
-
-      if (usagePlanComplete || fundingMode === "other-same" || fundingMode === "manual") {
-        usageEntries
-          .filter((entry) => entry.fromCategory === category)
-          .forEach((entry) => {
-            if (toSpend <= 0) {
-              return;
-            }
-            const fromParent = normalizeOwnerKey(entry.fromParent || owner);
-            const entryAmount = Math.min(toSpend, Number(entry.amount) || 0);
-            const leftover = spendFromParentBuckets(fromParent, entryAmount);
-            toSpend -= entryAmount - leftover;
-          });
-        // Cross-category funding arrives via linked transferIn (credited to spender).
-        if (toSpend > 0.004 && hasCrossCategoryUsage) {
-          toSpend = spendFromParentBuckets(owner, toSpend);
-        }
-      } else {
-        toSpend = spendFromParentBuckets(owner, toSpend);
-
-        usageEntries
-          .filter((entry) => entry.fromCategory === category && normalizeOwnerKey(entry.fromParent) !== owner)
-          .forEach((entry) => {
-            if (toSpend <= 0) {
-              return;
-            }
-            const entryAmount = Math.min(toSpend, Number(entry.amount) || 0);
-            const leftover = spendFromParentBuckets(normalizeOwnerKey(entry.fromParent), entryAmount);
-            toSpend -= entryAmount - leftover;
-          });
-      }
-
-      if (toSpend > 0) {
-        addOwnedBucket(buckets, month, owner, -toSpend);
-      }
-      pruneZeroBuckets(buckets);
-    });
-  });
-
-  const split = {};
-  PARENTS.forEach((owner) => {
-    split[owner] = sum(buckets.filter((bucket) => bucket.owner === owner).map((bucket) => bucket.amount));
-  });
-  return split;
+  return BudgetEngine.getParentRemainingSplit(getEngineContext(), category, upToMonth, options);
 }
 
 const TX_FUNDING_MODES = ["auto", "other-same", "manual"];
@@ -3317,60 +3226,8 @@ function renderChart(categoryData) {
   });
 }
 
-function applySignedTxToBucketList(buckets, tx) {
-  if (tx.amount >= 0) {
-    addToBucket(buckets, tx.month, tx.amount);
-  } else {
-    let toSpend = Math.abs(tx.amount);
-    const positiveBuckets = buckets
-      .filter((bucket) => bucket.amount > 0)
-      .sort((a, b) => a.sourceMonth.localeCompare(b.sourceMonth));
-
-    positiveBuckets.forEach((bucket) => {
-      if (toSpend <= 0) {
-        return;
-      }
-      const used = Math.min(bucket.amount, toSpend);
-      bucket.amount -= used;
-      toSpend -= used;
-    });
-
-    if (toSpend > 0) {
-      addToBucket(buckets, tx.month, -toSpend);
-    }
-  }
-  pruneZeroBuckets(buckets);
-}
-
-function simulateCategory(category, upToMonth) {
-  const months = getMonthRange(upToMonth);
-  const buckets = [];
-  const timeline = [];
-
-  months.forEach((month) => {
-    const contribution = PARENTS.reduce(
-      (acc, owner) => acc + getBudgetAmountForMonth(month, category, owner),
-      0
-    );
-    if (Math.abs(contribution) > 0.004) {
-      addToBucket(buckets, month, contribution);
-    }
-
-    const txs = state.transactions
-      .filter((tx) => tx.month === month && tx.category === category)
-      .sort(compareTransactions);
-
-    txs.forEach((tx) => {
-      applySignedTxToBucketList(buckets, tx);
-    });
-
-    timeline.push({
-      month,
-      total: sum(buckets.map((bucket) => bucket.amount)),
-    });
-  });
-
-  return { buckets, timeline };
+function simulateCategory(category, upToMonth, options) {
+  return BudgetEngine.simulateCategory(getEngineContext(), category, upToMonth, options);
 }
 
 function mergeTimelines(categoryData) {
@@ -3385,104 +3242,23 @@ function mergeTimelines(categoryData) {
     .map(([month, total]) => ({ month, total }));
 }
 
-function getMonthRange(upToMonth) {
-  const monthsWithData = [
-    ...Object.keys(state.monthlyBudgets),
-    ...state.transactions.map((tx) => tx.month),
-    upToMonth,
-  ].filter(Boolean);
-
-  if (monthsWithData.length === 0) {
-    return [upToMonth];
-  }
-
-  monthsWithData.sort();
-  const start = monthsWithData[0];
-  const range = [];
-  let cursor = start;
-  while (cursor <= upToMonth) {
-    range.push(cursor);
-    cursor = nextMonth(cursor);
-  }
-  return range;
-}
-
 function nextMonth(month) {
-  const [yearRaw, monthRaw] = month.split("-");
-  const year = Number(yearRaw);
-  const numMonth = Number(monthRaw);
-  const date = new Date(year, numMonth, 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return BudgetEngine.nextMonth(month);
 }
 
 function previousMonth(month) {
-  const [yearRaw, monthRaw] = month.split("-");
-  const year = Number(yearRaw);
-  const numMonth = Number(monthRaw);
-  const date = new Date(year, numMonth - 2, 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return BudgetEngine.previousMonth(month);
 }
 
 function daysUntilNextMonth() {
   const now = new Date();
-  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const upcoming = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const msPerDay = 1000 * 60 * 60 * 24;
-  return Math.max(1, Math.ceil((nextMonth - now) / msPerDay));
-}
-
-function addToBucket(buckets, sourceMonth, amount) {
-  const existing = buckets.find((bucket) => bucket.sourceMonth === sourceMonth);
-  if (existing) {
-    existing.amount += amount;
-  } else {
-    buckets.push({ sourceMonth, amount });
-  }
-}
-
-function addOwnedBucket(buckets, sourceMonth, owner, amount) {
-  const existing = buckets.find(
-    (bucket) => bucket.sourceMonth === sourceMonth && bucket.owner === owner
-  );
-  if (existing) {
-    existing.amount += amount;
-  } else {
-    buckets.push({ sourceMonth, owner, amount });
-  }
+  return Math.max(1, Math.ceil((upcoming - now) / msPerDay));
 }
 
 function getBudgetAmountForMonth(month, category, parent) {
-  const explicit = state.monthlyBudgets[month]?.[category]?.[parent];
-  const recurringAmount = state.recurringBudgets?.[parent]?.[category] ?? 0;
-  const hasRecurring = Math.abs(recurringAmount) > 0.004;
-
-  if (typeof explicit === "number" && Math.abs(explicit) > 0.004) {
-    return explicit;
-  }
-  if (!hasRecurring) {
-    return typeof explicit === "number" ? explicit : 0;
-  }
-  if (Math.abs(recurringAmount) <= 0.004) {
-    return 0;
-  }
-  const configuredStart = state.recurringStartMonth?.[parent]?.[category];
-  const startMonth = configuredStart || currentMonth;
-  if (month < startMonth) {
-    return 0;
-  }
-  const interval = getRecurringIntervalFor(parent, category);
-  const diff = monthIndexFromKey(month) - monthIndexFromKey(startMonth);
-  if (diff < 0 || diff % interval !== 0) {
-    return 0;
-  }
-  return recurringAmount;
-}
-
-function pruneZeroBuckets(buckets) {
-  for (let i = buckets.length - 1; i >= 0; i -= 1) {
-    if (Math.abs(buckets[i].amount) <= 0.004) {
-      buckets.splice(i, 1);
-    }
-  }
+  return BudgetEngine.getBudgetAmountForMonth(getEngineContext(), month, category, parent);
 }
 
 function parseMoneyInput(raw) {
@@ -4351,28 +4127,6 @@ function saveState(options = {}) {
   if (!options.skipRemote) {
     schedulePushCloudSnapshot();
   }
-}
-
-function resetAllData() {
-  localStorage.removeItem(STORAGE_KEY);
-  if (LEGACY_STORAGE_KEY !== STORAGE_KEY) {
-    localStorage.removeItem(LEGACY_STORAGE_KEY);
-  }
-  const fresh = structuredClone(defaultState);
-  Object.keys(state).forEach((key) => {
-    delete state[key];
-  });
-  Object.assign(state, fresh);
-  ensureCategoryStructures(state);
-  session.loggedInParent = null;
-  setParentPanelOpen(false);
-  if (parentDialog.open) {
-    parentDialog.close();
-  }
-  renderLoggedInParent();
-  setParentMessageStatus("Alles gewist. Je start nu volledig opnieuw.", true);
-  saveState({ skipRemote: false });
-  render();
 }
 
 // Generic formatting/math utilities

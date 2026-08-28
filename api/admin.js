@@ -59,6 +59,59 @@ function readJsonBody(req) {
   });
 }
 
+function emptyChildSnapshotPayload(appMode, syncRevision) {
+  const categories = [
+    { id: "zakgeld", label: "Zakgeld", emoji: "💜", enabled: true, color: "#8d45cc" },
+    { id: "kleding", label: "Kledingsbudget", emoji: "👗", enabled: true, color: "#2f5ea2" },
+  ];
+  if (appMode === "solo") {
+    return {
+      appMode: "solo",
+      pins: { self: "1111" },
+      monthlyBudgets: {},
+      recurringBudgets: { self: { zakgeld: 0, kleding: 0 } },
+      recurringStartMonth: { self: { zakgeld: null, kleding: null } },
+      recurringIntervalMonths: { self: { zakgeld: 1, kleding: 1 } },
+      transactions: [],
+      categories,
+      coachSettings: {
+        autoCoachEnabled: true,
+        sensitivity: "normal",
+        parentMessages: { self: { text: "", expiresAt: null, readAt: null } },
+      },
+      syncRevision,
+    };
+  }
+  return {
+    appMode: "family",
+    pins: { mama: "1111", papa: "2222" },
+    monthlyBudgets: {},
+    recurringBudgets: {
+      mama: { zakgeld: 0, kleding: 0 },
+      papa: { zakgeld: 0, kleding: 0 },
+    },
+    recurringStartMonth: {
+      mama: { zakgeld: null, kleding: null },
+      papa: { zakgeld: null, kleding: null },
+    },
+    recurringIntervalMonths: {
+      mama: { zakgeld: 1, kleding: 1 },
+      papa: { zakgeld: 1, kleding: 1 },
+    },
+    transactions: [],
+    categories,
+    coachSettings: {
+      autoCoachEnabled: true,
+      sensitivity: "normal",
+      parentMessages: {
+        mama: { text: "", expiresAt: null, readAt: null },
+        papa: { text: "", expiresAt: null, readAt: null },
+      },
+    },
+    syncRevision,
+  };
+}
+
 function credentialsOk(email, password) {
   const expectedEmail = normalizeEmail(process.env.ADMIN_EMAIL);
   const expectedPassword = String(process.env.ADMIN_PASSWORD ?? "");
@@ -215,6 +268,46 @@ module.exports = async function handler(req, res) {
         returning id
       `;
       sendJson(res, 200, { ok: true, profile_id: profileRows[0].id });
+      return;
+    }
+
+    if (action === "resetChildSnapshot") {
+      const childId = String(body.childId ?? "").trim();
+      const familyId = String(body.familyId ?? "").trim();
+      const requestedMode = String(body.appMode ?? "").trim().toLowerCase();
+      if (!isUuid(childId) || !isUuid(familyId)) {
+        sendJson(res, 400, { error: "child_id en family_id moeten UUIDs zijn." });
+        return;
+      }
+      const existing = await sql`
+        select payload
+        from public.child_budget_snapshots
+        where child_id = ${childId}
+        limit 1
+      `;
+      const existingPayload = existing[0]?.payload;
+      let appMode = "family";
+      if (existingPayload?.appMode === "solo" || existingPayload?.appMode === "family") {
+        appMode = existingPayload.appMode;
+      } else if (requestedMode === "solo" || requestedMode === "family") {
+        appMode = requestedMode;
+      } else if (existingPayload?.pins?.self && !existingPayload?.pins?.mama && !existingPayload?.pins?.papa) {
+        appMode = "solo";
+      }
+      const existingRev = Number(existingPayload?.syncRevision) || 0;
+      const syncRevision = Math.max(Date.now(), existingRev + 1);
+      const payload = emptyChildSnapshotPayload(appMode, syncRevision);
+      const payloadJson = JSON.stringify(payload);
+      const updatedAt = new Date().toISOString();
+      await sql`
+        insert into public.child_budget_snapshots (child_id, family_id, payload, updated_at)
+        values (${childId}::uuid, ${familyId}::uuid, ${payloadJson}::jsonb, ${updatedAt}::timestamptz)
+        on conflict (child_id) do update set
+          family_id = excluded.family_id,
+          payload = excluded.payload,
+          updated_at = excluded.updated_at
+      `;
+      sendJson(res, 200, { ok: true, child_id: childId, appMode, syncRevision });
       return;
     }
 

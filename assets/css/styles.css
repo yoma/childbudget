@@ -2289,6 +2289,26 @@ body.admin-page #superAdminOverview .overview-row p {
   overflow-wrap: anywhere;
 }
 
+body.admin-page .admin-child-list {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+}
+
+body.admin-page .admin-child-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.8rem;
+  margin-top: 0.35rem;
+}
+
+body.admin-page .admin-reset-child-btn {
+  color: var(--bad);
+  border-color: rgba(225, 29, 72, 0.28);
+}
+
 body.admin-page.admin-authed #adminLoginForm label,
 body.admin-page.admin-authed #adminLoginForm button[type="submit"] {
   display: none;

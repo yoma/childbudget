@@ -5,6 +5,9 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "test": "node --test tests/budget-engine.test.js"
+  },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1"
   }

@@ -1,5 +1,5 @@
 const cfg = window.__SUPABASE_CONFIG__ ?? {};
-const ADMIN_BUILD_VERSION = "2026-08-19-1545";
+const ADMIN_BUILD_VERSION = "2026-08-28-1552";
 const ADMIN_API_URL = String(cfg.adminApiUrl ?? "").replace(/\/$/, "");
 
 const adminWorkspaceEl = document.getElementById("adminWorkspace");
@@ -36,6 +36,7 @@ const adminBuildMetaEl = document.getElementById("adminBuildMeta");
 
 const superAdminOverviewEl = document.getElementById("superAdminOverview");
 const refreshOverviewBtn = document.getElementById("refreshOverviewBtn");
+const adminResetStatusEl = document.getElementById("adminResetStatus");
 
 const adminAuthState = {
   email: "",
@@ -79,6 +80,7 @@ function bindEvents() {
   createChildForm.addEventListener("submit", handleCreateChild);
   createUserForm.addEventListener("submit", handleCreateUserWithProfile);
   refreshOverviewBtn.addEventListener("click", refreshOverview);
+  superAdminOverviewEl?.addEventListener("click", handleOverviewClick);
 }
 
 async function adminRequest(payload) {
@@ -244,21 +246,38 @@ async function refreshOverview() {
       .map((family) => {
         const children = asList(family.children);
         const profiles = asList(family.profiles);
-        const childLinks =
+        const childRows =
           children
             .map((c) => {
+              const appMode = inferChildAppMode(family.id, c.id);
               const familyUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name, "family");
               const soloUrl = buildChildAppUrl(family.id, c.id, c.slug, c.display_name, "solo");
-              return `${escapeHtml(c.display_name)} (${escapeHtml(c.slug)}) - <a href="${familyUrl}" target="_blank" rel="noopener">family</a> · <a href="${soloUrl}" target="_blank" rel="noopener">solo</a>`;
+              const name = escapeHtml(c.display_name);
+              const slug = escapeHtml(c.slug);
+              return `<li class="admin-child-row">
+                <span>${name} (${slug}) · ${escapeHtml(appMode)} -
+                  <a href="${familyUrl}" target="_blank" rel="noopener">family</a> ·
+                  <a href="${soloUrl}" target="_blank" rel="noopener">solo</a>
+                </span>
+                <button
+                  type="button"
+                  class="btn btn-ghost admin-reset-child-btn"
+                  data-child-id="${escapeHtml(c.id)}"
+                  data-family-id="${escapeHtml(family.id)}"
+                  data-child-name="${name}"
+                  data-app-mode="${escapeHtml(appMode)}"
+                >Wis testdata</button>
+              </li>`;
             })
-            .join(", ") || "geen";
+            .join("") || "<li>geen</li>";
         const profileText =
           profiles.map((p) => `${escapeHtml(p.display_name)} [${escapeHtml(p.role)}]`).join(", ") || "geen";
         return `
         <div class="overview-row">
           <strong>${escapeHtml(family.name)}</strong>
           <p>family_id: ${escapeHtml(family.id)}</p>
-          <p>kinderen: ${childLinks}</p>
+          <p>kinderen:</p>
+          <ul class="admin-child-list">${childRows}</ul>
           <p>users: ${profileText}</p>
         </div>
       `;
@@ -268,6 +287,67 @@ async function refreshOverview() {
     superAdminOverviewEl.innerHTML = `<p class="muted">Overzicht laden mislukt: ${escapeHtml(
       error.message
     )}</p>`;
+  }
+}
+
+function inferChildAppMode(familyId, childId) {
+  const routes = cfg.childRoutes ?? {};
+  const match = Object.values(routes).find(
+    (route) => route.familyId === familyId && route.childId === childId
+  );
+  return match?.mode === "solo" ? "solo" : "family";
+}
+
+async function handleOverviewClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  const button = target.closest(".admin-reset-child-btn");
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  const childId = button.dataset.childId;
+  const familyId = button.dataset.familyId;
+  const childName = button.dataset.childName || "";
+  const appMode = button.dataset.appMode === "solo" ? "solo" : "family";
+  if (!childId || !familyId) {
+    return;
+  }
+  const first = window.confirm(
+    `Cloud-testdata van ${childName} wissen? Dit wist budgetten, transacties en coach in de cloud. Open daarna de app opnieuw.`
+  );
+  if (!first) {
+    return;
+  }
+  const typed = window.prompt(`Typ de naam "${childName}" om te bevestigen:`);
+  if (String(typed ?? "").trim() !== childName) {
+    setStatus(adminResetStatusEl, "Wissen geannuleerd: naam kwam niet overeen.", "error");
+    return;
+  }
+  const last = window.confirm(`Laatste check: ${childName} echt leegmaken in de cloud?`);
+  if (!last) {
+    setStatus(adminResetStatusEl, "Wissen geannuleerd.", "neutral");
+    return;
+  }
+  button.disabled = true;
+  setStatus(adminResetStatusEl, `Testdata van ${childName} wissen...`, "neutral");
+  try {
+    await adminRequest({
+      action: "resetChildSnapshot",
+      childId,
+      familyId,
+      appMode,
+    });
+    setStatus(
+      adminResetStatusEl,
+      `Testdata van ${childName} gewist. Herlaad de kind-app om de lege stand te zien.`,
+      "success"
+    );
+  } catch (error) {
+    setStatus(adminResetStatusEl, `Wissen mislukt: ${error.message}`, "error");
+  } finally {
+    button.disabled = false;
   }
 }
 
